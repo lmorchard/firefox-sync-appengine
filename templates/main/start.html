@@ -9,10 +9,10 @@
 
 {% if not profile %}
 
+    <p>You don't have a sync profile here for this login, yet. 
     <form action="" method="post">
         <input type="hidden" name="action" value="create_profile" />
-        <p>You don't have a sync profile here for this login, yet. 
-            <input type="submit" value="Create a new sync profile, please." /></p>
+        <input type="submit" value="Create a new sync profile, please." /></p>
     </form>
     
 {% else %}
@@ -35,7 +35,7 @@
     <p>Would you like to delete the sync profile for this login?
     <form action="" method="post">
         <input type="hidden" name="action" value="delete_profile" />
-            <input type="submit" value="Yes, delete all my data, please." /></p>
+        <input type="submit" value="Yes, delete all my data, please." /></p>
     </form>
 
 {% endif %}

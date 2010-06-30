@@ -1,19 +1,6 @@
-#!/usr/bin/env python
-#
-# Copyright 2007 Google Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
+"""
+Controller package for basic web UI.
+"""
 import sys, os, os.path
 base_dir = os.path.dirname( os.path.dirname(__file__) )
 sys.path.extend([ os.path.join(base_dir, d) for d in 
@@ -27,6 +14,7 @@ from google.appengine.ext.webapp import util, template
 from fxsync.models import *
 
 def main():
+    """Main entry point for controller"""
     application = webapp.WSGIApplication(
         [
             ('/start', StartHandler),
@@ -36,17 +24,23 @@ def main():
     util.run_wsgi_app(application)
 
 class StartHandler(webapp.RequestHandler):
+    """Sync start page handler"""
 
     def get(self):
-        user, profile = self.find_profile_for_user()
+        """Display the sync start page"""
+        user, profile = Profile.find_user_and_profile()
         return self.render_template('main/start.html', {
             'user': user, 
             'profile': profile,
-            'sync_url': '%s/sync/1.0' % self.request.application_url
+            'sync_url': '%s/sync' % self.request.application_url
         })
 
     def post(self):
-        user, profile = self.find_profile_for_user()
+        """Process a POST'd command from the sync start page.
+
+        HACK: This is a little hacky, pivoting on a form field command, but oh well.
+        """
+        user, profile = Profile.find_user_and_profile()
         action = self.request.get('action', False)
 
         if not profile and 'create_profile' == action:
@@ -54,13 +48,13 @@ class StartHandler(webapp.RequestHandler):
             new_profile = Profile(
                 user_id   = user.user_id(),
                 user_name = user.nickname(),
-                password  = self.generate_password()
+                password  = Profile.generate_password()
             )
             new_profile.put()
 
         elif profile and 'regenerate_password' == action:
             # Generate and set a new password for the profile
-            profile.password = self.generate_password()
+            profile.password = Profile.generate_password()
             profile.put()
 
         elif profile and 'delete_profile' == action:
@@ -69,15 +63,6 @@ class StartHandler(webapp.RequestHandler):
 
         return self.redirect('/start')
 
-    def find_profile_for_user(self):
-        """Try finding a sync profile associated with the current user"""
-        user = users.get_current_user()
-        profile = db.GqlQuery(
-            "SELECT * FROM Profile WHERE user_id = :1", 
-            user.user_id()
-        ).get()
-        return user, profile
-
     def render_template(self, path, data=None):
         """Shortcut for rendering templates"""
         if (data is None): data = {}
@@ -85,8 +70,4 @@ class StartHandler(webapp.RequestHandler):
             '%s/templates/%s' % (base_dir, path), data
         ))
 
-    def generate_password(self):
-        return ''.join(random.sample(string.letters+string.digits, 16))
-
-if __name__ == '__main__':
-    main()
+if __name__ == '__main__': main()
