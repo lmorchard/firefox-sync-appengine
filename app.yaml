@@ -1,0 +1,31 @@
+application: firefox-sync-appengine
+version: 1
+runtime: python
+api_version: 1
+
+handlers:
+- url: /favicon.ico
+  static_files: htdocs/favicon.ico
+  upload: htdocs/favicon.ico
+- url: /
+  static_files: htdocs/index.html
+  upload: htdocs/index.html
+- url: /index.html
+  static_files: htdocs/index.html
+  upload: htdocs/index.html
+- url: /img
+  static_dir: htdocs/img
+- url: /js
+  static_dir: htdocs/js
+- url: /css
+  static_dir: htdocs/css
+- url: /sync/user/1.0/.*
+  script: controllers/user_api.py
+- url: /sync/1.0/.*
+  script: controllers/sync_api.py
+- url: /admin/.*
+  script: $PYTHON_LIB/google/appengine/ext/admin
+  login: admin
+- url: .*
+  script: controllers/main.py
+  login: required

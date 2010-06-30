@@ -1,0 +1,43 @@
+{% extends "../base.html" %}
+
+{% block page_title %}Sync Start{% endblock %}
+
+{% block content %}
+<h1>Sync Start</h1>
+
+<p>You are logged in as: <code>{{ user.nickname }}</code></p>
+
+{% if not profile %}
+
+    <form action="" method="post">
+        <input type="hidden" name="action" value="create_profile" />
+        <p>You don't have a sync profile here for this login, yet. 
+            <input type="submit" value="Create a new sync profile, please." /></p>
+    </form>
+    
+{% else %}
+    
+    <p>A sync profile exists.</p>
+
+    <dl>
+        <dt>Sync URL</dt><dd>{{sync_url}}</dd>
+        <dt>Sync username</dt><dd>{{ profile.user_name }}</dd>
+        <dt>Sync password</dt>
+        <dd>
+            <span>{{ profile.password }}</span>
+            <form action="" method="post">
+                <input type="hidden" name="action" value="regenerate_password" />
+                <input type="submit" value="Re-generate password" /></p>
+            </form>
+        </dd>
+    </dl>
+
+    <p>Would you like to delete the sync profile for this login?
+    <form action="" method="post">
+        <input type="hidden" name="action" value="delete_profile" />
+            <input type="submit" value="Yes, delete all my data, please." /></p>
+    </form>
+
+{% endif %}
+
+{% endblock %}
