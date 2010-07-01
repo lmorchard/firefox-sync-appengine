@@ -1,4 +1,4 @@
-application: firefox-sync-appengine
+application: lmo-fx-sync
 version: 1
 runtime: python
 api_version: 1
@@ -26,6 +26,9 @@ handlers:
 - url: /admin/.*
   script: $PYTHON_LIB/google/appengine/ext/admin
   login: admin
+- url: /test.*
+  login: admin
+  script: controllers/gaeunit.py
 - url: .*
   script: controllers/main.py
   login: required

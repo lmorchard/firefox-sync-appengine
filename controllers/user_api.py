@@ -10,7 +10,7 @@ from google.appengine.api import users
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp import util
 from fxsync.models import *
-from fxsync.utils import profileauth
+from fxsync.utils import profile_auth
 
 def main():
     """Main entry point for controller"""
@@ -39,7 +39,7 @@ class UserHandler(webapp.RequestHandler):
     def get(self, user_name):
         """Determine whether the user exists"""
         user_name = urllib.unquote(user_name)
-        profile = Profile.find_by_user_name(user_name)
+        profile = Profile.get_by_user_name(user_name)
         return self.response.out.write(profile and '1' or '0')
 
     def put(self, user_name):
@@ -47,17 +47,17 @@ class UserHandler(webapp.RequestHandler):
         # This server disallows sign-up
         self.response.set_status(403)
 
-    @profileauth
+    @profile_auth
     def delete(self, user_name):
         """Allow profile deletion"""
         user_name = urllib.unquote(user_name)
-        profile = Profile.find_by_user_name(user_name)
+        profile = Profile.get_by_user_name(user_name)
         profile.delete()
         return self.response.out.write('success')
 
 class EmailHandler(webapp.RequestHandler):
 
-    @profileauth
+    @profile_auth
     def post(self, user_name):
         """Profile email modification"""
         # This server disallows email change
@@ -65,7 +65,7 @@ class EmailHandler(webapp.RequestHandler):
 
 class PasswordHandler(webapp.RequestHandler):
     
-    @profileauth
+    @profile_auth
     def post(self, user_name):
         """Profile password modification"""
         # This server disallows password change (for now)
@@ -73,7 +73,7 @@ class PasswordHandler(webapp.RequestHandler):
 
 class PasswordResetHandler(webapp.RequestHandler):
    
-    @profileauth
+    @profile_auth
     def get(self, user_name):
         """Profile password reset trigger"""
         # This server disallows password reset

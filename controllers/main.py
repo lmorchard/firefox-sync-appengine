@@ -3,15 +3,13 @@ Controller package for basic web UI.
 """
 import sys, os, os.path
 base_dir = os.path.dirname( os.path.dirname(__file__) )
-sys.path.extend([ os.path.join(base_dir, d) for d in 
-    ( 'lib', 'extlib', 'models' ) 
-])
+sys.path.extend([ os.path.join(base_dir, d) for d in ('lib', 'extlib') ])
 
 import random, string
 from google.appengine.api import users
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp import util, template
-from fxsync.models import *
+from fxsync.models import Profile, Collection, WBO
 
 def main():
     """Main entry point for controller"""
@@ -28,7 +26,7 @@ class StartHandler(webapp.RequestHandler):
 
     def get(self):
         """Display the sync start page"""
-        user, profile = Profile.find_user_and_profile()
+        user, profile = Profile.get_user_and_profile()
         return self.render_template('main/start.html', {
             'user': user, 
             'profile': profile,
@@ -40,7 +38,7 @@ class StartHandler(webapp.RequestHandler):
 
         HACK: This is a little hacky, pivoting on a form field command, but oh well.
         """
-        user, profile = Profile.find_user_and_profile()
+        user, profile = Profile.get_user_and_profile()
         action = self.request.get('action', False)
 
         if not profile and 'create_profile' == action:
