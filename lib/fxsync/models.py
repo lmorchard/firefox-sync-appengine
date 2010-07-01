@@ -169,7 +169,7 @@ class WBO(db.Model):
         return round(st,2)
 
     @classmethod
-    def get_by_collection_and_id(cls, collection_name, wbo_id):
+    def get_by_user_id_collection_id_and_wbo_id(cls, user_id, collection_name, wbo_id):
         """Get a WBO by wbo_id"""
         return (
             cls.all()

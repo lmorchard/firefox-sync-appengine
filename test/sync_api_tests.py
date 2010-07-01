@@ -5,7 +5,7 @@ sys.path.extend([ os.path.join(base_dir, d) for d in (
 )])
 
 import unittest, logging, datetime, time, base64
-import webtest, json, random, string
+import webtest, simplejson, random, string
 from google.appengine.ext import webapp, db
 
 from fxsync.models import Profile, Collection, WBO
@@ -76,12 +76,12 @@ class SyncApiTests(unittest.TestCase):
         self.assertEqual('400 Bad Request', resp.status)
 
         resp = self.app.put(storage_url, headers=auth_header, 
-            params=json.dumps(wbo_data))
+            params=simplejson.dumps(wbo_data))
         self.assertEqual('200 OK', resp.status)
         self.assert_(WBO.get_time_now() >= float(resp.body))
 
         resp = self.app.get(storage_url, headers=auth_header)
-        resp_wbo_data = json.loads(resp.body)
+        resp_wbo_data = simplejson.loads(resp.body)
         self.assertEqual(wbo_data['payload'], resp_wbo_data['payload'])
 
         resp = self.app.delete(storage_url, headers=auth_header)
@@ -110,7 +110,7 @@ class SyncApiTests(unittest.TestCase):
             for i in range(count):
                 # Build up a random content object for insertion.
                 wbo_id = random.randint(0, 1000000)
-                wbo_json = json.dumps({
+                wbo_json = simplejson.dumps({
                     'sortindex': random.randint(0, 1000),
                     'payload': ''.join(random.sample(string.letters, 16))
                 })
@@ -126,7 +126,7 @@ class SyncApiTests(unittest.TestCase):
             '/sync/1.0/%s/info/collection_counts' % (self.USER_NAME),
             headers=auth_header
         )
-        resp_data = json.loads(resp.body)
+        resp_data = simplejson.loads(resp.body)
         self.assertEqual(expected_counts, resp_data)
 
         # Ensure all timestamps are same or newer than expected.
@@ -134,7 +134,7 @@ class SyncApiTests(unittest.TestCase):
             '/sync/1.0/%s/info/collections' % (self.USER_NAME),
             headers=auth_header
         )
-        resp_data = json.loads(resp.body)
+        resp_data = simplejson.loads(resp.body)
         for k,v in expected_dates.items():
             self.assert_(k in resp_data)
             self.assert_(resp_data[k] >= expected_dates[k])

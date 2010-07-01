@@ -5,7 +5,7 @@ import sys, os
 base_dir = os.path.dirname( os.path.dirname(__file__) )
 sys.path.extend([ os.path.join(base_dir, d) for d in ( 'lib', 'extlib' ) ])
 
-import json, logging
+import logging
 from datetime import datetime
 from time import mktime
 from google.appengine.api import users
@@ -70,7 +70,9 @@ class StorageItemHandler(SyncApiBaseRequestHandler):
     @json_response
     def get(self, user_name, collection_name, wbo_id):
         """Get an item from the collection"""
-        wbo = WBO.get_by_collection_and_id(collection_name, wbo_id)
+        wbo = WBO.get_by_user_id_collection_id_and_wbo_id(
+            self.request.profile.user_id, collection_name, wbo_id
+        )
         if not wbo: return self.error(404)
         wbo_data = dict( (k,getattr(wbo, k)) for k in ( 
             'sortindex', 'parentid', 'predecessorid', 
@@ -82,7 +84,9 @@ class StorageItemHandler(SyncApiBaseRequestHandler):
     @profile_auth
     def delete(self, user_name, collection_name, wbo_id):
         """Delete an item from the collection"""
-        wbo = WBO.get_by_collection_and_id(collection_name, wbo_id)
+        wbo = WBO.get_by_user_id_collection_id_and_wbo_id(
+            self.request.profile.user_id, collection_name, wbo_id
+        )
         if not wbo: return self.error(404)
         wbo.delete()
         self.response.out.write('%s' % WBO.get_time_now())
@@ -107,7 +111,9 @@ class StorageItemHandler(SyncApiBaseRequestHandler):
             'payload_size': len(wbo_data['payload']),
         })
 
-        wbo = WBO.get_by_collection_and_id(collection_name, wbo_id)
+        wbo = WBO.get_by_user_id_collection_id_and_wbo_id(
+            self.request.profile.user_id, collection_name, wbo_id
+        )
         if not wbo:
             wbo = WBO(**wbo_data)
         else:

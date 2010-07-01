@@ -20,6 +20,7 @@ indexes:
 - kind: WBO
   properties:
   - name: collection_name
+  - name: user_id
   - name: wbo_id
   - name: modified
     direction: desc

@@ -3,14 +3,18 @@ Random utilities
 
 TODO: Put these in a better named package, instead of this grab bag
 """
-import urllib, base64, json
+import sys, os, os.path
+base_dir = os.path.dirname( os.path.dirname(__file__) )
+sys.path.extend([ os.path.join(base_dir, d) for d in ('lib', 'extlib')])
+
+import urllib, base64, simplejson
 from fxsync.models import Profile
 
 def json_request(func):
     """Decorator to auto-decode JSON request body"""
     def cb(wh, *args, **kwargs):
         try:
-            wh.request.body_json = json.loads(wh.request.body)
+            wh.request.body_json = simplejson.loads(wh.request.body)
             return func(wh, *args, **kwargs)
         except ValueError:
             wh.response.set_status(400, message="Bad Request")
@@ -22,7 +26,7 @@ def json_response(func):
     def cb(wh, *args, **kwargs):
         rv = func(wh, *args, **kwargs)
         wh.response.headers['Content-Type'] = 'application/json'
-        wh.response.out.write(json.dumps(rv))
+        wh.response.out.write(simplejson.dumps(rv))
         return rv
     return cb
 
