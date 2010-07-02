@@ -2,3 +2,6 @@ tmp/
 *.pyc
 *.swp
 
+extlib/simplejson/_speedups.c
+extlib/simplejson/tests/
+
