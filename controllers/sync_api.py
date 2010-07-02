@@ -5,7 +5,7 @@ import sys, os
 base_dir = os.path.dirname( os.path.dirname(__file__) )
 sys.path.extend([ os.path.join(base_dir, d) for d in ( 'lib', 'extlib' ) ])
 
-import logging
+import logging, simplejson
 from datetime import datetime
 from time import mktime
 from google.appengine.api import users
@@ -72,12 +72,7 @@ class StorageItemHandler(SyncApiBaseRequestHandler):
         )
         wbo = WBO.get_by_collection_and_wbo_id(collection, wbo_id)
         if not wbo: return self.error(404)
-        wbo_data = dict( (k,getattr(wbo, k)) for k in ( 
-            'sortindex', 'parentid', 'predecessorid', 
-            'payload', 'payload_size', 'modified'
-        ) if getattr(wbo, k))
-        wbo_data['id'] = wbo_id
-        return wbo_data
+        return wbo.to_dict()
 
     @profile_auth
     def delete(self, user_name, collection_name, wbo_id):
@@ -110,7 +105,6 @@ class StorageItemHandler(SyncApiBaseRequestHandler):
         ) if (k in body))
         
         wbo_data.update({
-            'profile': self.request.profile,
             'collection': collection,
             'modified': wbo_now,
             'wbo_id': wbo_id,
@@ -131,14 +125,32 @@ class StorageItemHandler(SyncApiBaseRequestHandler):
 class StorageCollectionHandler(SyncApiBaseRequestHandler):
 
     @profile_auth
+    @json_response
     def get(self, user_name, collection_name):
-        params = dict((k,self.request.get(k, False)) for k in (
-            'ids', 'predecessorid', 'parentid', 
+        collection = Collection.get_by_profile_and_name(
+            self.request.profile, collection_name
+        )
+
+        params = dict((k,self.request.get(k, None)) for k in (
+            'id', 'ids', 'predecessorid', 'parentid', 
             'older', 'newer',
             'index_above', 'index_below', 
             'full', 'limit', 'offset', 'sort'
         ))
-        self.response.out.write('StorageCollectionHandler %s' % user_name)
+
+        params['full'] = params['full'] is not None
+
+        if params['ids']: params['ids'] = params['ids'].split(',')
+
+        for n in ('index_above', 'index_below', 'limit', 'offset'):
+            if params[n]: params[n] = int(params[n])
+
+        for n in ('older', 'newer'):
+            if params[n]: params[n] = float(params[n])
+
+        self.log.debug('params %s' % (simplejson.dumps(params)))
+
+        return collection.retrieve(**params)
 
     @profile_auth
     def post(self, user_name, collection_name):

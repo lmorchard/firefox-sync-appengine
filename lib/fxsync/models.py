@@ -1,7 +1,11 @@
 """
 Model classes for fxsync
 """
-import datetime, random, string, hashlib, logging
+import sys, os
+base_dir = os.path.dirname( os.path.dirname(__file__) )
+sys.path.extend([ os.path.join(base_dir, d) for d in ( 'lib', 'extlib' ) ])
+
+import datetime, random, string, hashlib, logging, simplejson
 from google.appengine.ext import db
 from google.appengine.api import users
 
@@ -52,6 +56,89 @@ class Collection(db.Model):
         for w in q: w.delete()
         db.Model.delete(self)
 
+    def retrieve(self, 
+            full=None, direct_output=None, 
+            id=None, ids=None, 
+            parentid=None, predecessorid=None, 
+            newer=None, older=None, 
+            index_above=None, index_below=None,
+            sort=None, limit=None, offset=None):
+
+        self.log = logging.getLogger()
+
+        limit  = limit and limit or 1000
+        offset = offset and offset or 0
+        sort   = sort and sort or 'index'
+
+        filter_used = False
+        key_sets = []
+
+        if id:
+            filter_used = True
+            q = WBO.all(keys_only=True).ancestor(self).filter('wbo_id =', id)
+            key_sets.append(set(str(x) for x in q.fetch(limit)))
+
+        if ids:
+            filter_used = True
+            # TODO: No me gusta el full WBO turned to key here
+            q = WBO.all().ancestor(self).filter('wbo_id IN', ids)
+            key_sets.append(set('%s'%x.key() for x in q.fetch(limit)))
+
+        if index_above is not None or index_below is not None:
+            filter_used = True
+            q = WBO.all(keys_only=True).ancestor(self)
+            if index_above: q.filter('sortindex >', index_above)
+            if index_below: q.filter('sortindex <', index_below)
+            key_sets.append(set(str(x) for x in q.fetch(limit)))
+
+        if newer is not None or older is not None:
+            filter_used = True
+            q = WBO.all(keys_only=True).ancestor(self)
+            if newer: q.filter('modified >', newer)
+            if older: q.filter('modified <', older)
+            key_sets.append(set(str(x) for x in q.fetch(limit)))
+
+        if parentid is not None:
+            filter_used = True
+            q = (WBO.all(keys_only=True).ancestor(self)
+                .filter('parentid =', parentid))
+            key_sets.append(set(str(x) for x in q.fetch(limit)))
+            
+        if predecessorid is not None:
+            filter_used = True
+            q = (WBO.all(keys_only=True).ancestor(self)
+                .filter('predecessorid =', predecessorid))
+            key_sets.append(set(str(x) for x in q.fetch(limit)))
+
+        # Start looking for the WBOs using collected key sets - or query
+        # without filter if none used.
+        q = WBO.all().ancestor(self)
+        if filter_used:
+            if len(key_sets) == 0:
+                keys = []
+            else:
+                keys = [db.Key(x) for x in set.intersection(*key_sets)]
+            q.filter('__key__ IN', keys)
+
+        # Determine which sort order to use.
+        if 'oldest' == sort: order = 'modified'
+        elif 'newest' == sort: order = '-modified'
+        else: order = 'sortindex'
+        q.order(order)
+
+        # TODO: direct output!
+
+        # Fetch the set of WBOs, using given limit and offset
+        wbos = q.fetch(limit, offset)
+
+        # Return IDs / full objects as appropriate for full option.
+        if not full:
+            out = [ w.wbo_id for w in wbos ]
+        else:
+            out = [ w.to_dict() for w in wbos ]
+
+        return out
+
     @classmethod
     def build_key_name(cls, profile, name):
         return 'collection:%s:%s' % (profile.key(), name)
@@ -100,6 +187,15 @@ class WBO(db.Model):
     payload         = db.TextProperty(required=True)
     payload_size    = db.IntegerProperty(default=0)
 
+    def to_dict(self):
+        """Produce a dict representation, usable for JSON response"""
+        wbo_data = dict( (k,getattr(self, k)) for k in ( 
+            'sortindex', 'parentid', 'predecessorid', 
+            'payload', 'payload_size', 'modified'
+        ) if getattr(self, k))
+        wbo_data['id'] = self.wbo_id
+        return wbo_data
+
     @classmethod
     def build_key_name(cls, collection, wbo_id):
         return 'wbo-%s-%s-%s' % (
@@ -123,7 +219,4 @@ class WBO(db.Model):
     @classmethod
     def get_by_collection_and_wbo_id(cls, collection, wbo_id):
         """Get a WBO by wbo_id"""
-        return cls.get_by_key_name(
-            cls.build_key_name(collection, wbo_id),
-            parent=collection
-        )
+        return WBO.all().ancestor(collection).filter('wbo_id =', wbo_id).get()
