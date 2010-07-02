@@ -24,3 +24,9 @@ indexes:
   - name: wbo_id
   - name: modified
     direction: desc
+
+- kind: WBO
+  ancestor: yes
+  properties:
+  - name: modified
+    direction: desc

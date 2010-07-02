@@ -14,16 +14,13 @@ from fxsync.utils import profile_auth
 
 def main():
     """Main entry point for controller"""
-    application = webapp.WSGIApplication(
-        [
-            (r'/sync/user/1.0/(.*)/node/weave', NodeHandler), # GET (unauth)
-            (r'/sync/user/1.0/(.*)/email', EmailHandler), # POST
-            (r'/sync/user/1.0/(.*)/password', PasswordHandler), # POST
-            (r'/sync/user/1.0/(.*)/password_reset', PasswordResetHandler), # GET
-            (r'/sync/user/1.0/(.*)/?', UserHandler), # GET (unauth), PUT, DELETE
-        ], 
-        debug=True
-    )
+    application = webapp.WSGIApplication([
+        (r'/sync/user/1.0/(.*)/node/weave', NodeHandler), # GET (unauth)
+        (r'/sync/user/1.0/(.*)/email', EmailHandler), # POST
+        (r'/sync/user/1.0/(.*)/password', PasswordHandler), # POST
+        (r'/sync/user/1.0/(.*)/password_reset', PasswordResetHandler), # GET
+        (r'/sync/user/1.0/(.*)/?', UserHandler), # GET (unauth), PUT, DELETE
+    ], debug=True)
     util.run_wsgi_app(application)
 
 class NodeHandler(webapp.RequestHandler):

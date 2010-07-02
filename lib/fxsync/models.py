@@ -1,7 +1,7 @@
 """
 Model classes for fxsync
 """
-import datetime, random, string
+import datetime, random, string, hashlib, logging
 from google.appengine.ext import db
 from google.appengine.api import users
 
@@ -10,7 +10,6 @@ from time import mktime
 
 class Profile(db.Model):
     """Sync profile associated with logged in account"""
-    user_id     = db.StringProperty(required=True)
     user_name   = db.StringProperty(required=True)
     password    = db.StringProperty(required=True)
     created_at  = db.DateTimeProperty(auto_now_add=True)
@@ -20,10 +19,7 @@ class Profile(db.Model):
     def get_user_and_profile(cls):
         """Try finding a sync profile associated with the current user"""
         user = users.get_current_user()
-        profile = db.GqlQuery(
-            "SELECT * FROM Profile WHERE user_id = :1", 
-            user.user_id()
-        ).get()
+        profile = Profile.all().filter('user_id =', user.user_id()).get()
         return user, profile
 
     @classmethod
@@ -40,102 +36,63 @@ class Profile(db.Model):
     def authenticate(cls, user_name, password):
         """Attempt to authenticate the given user name and password"""
         profile = cls.get_by_user_name(user_name)
-        if profile and profile.password == password:
-            return True
-        else:
-            return False
+        return ( profile and profile.password == password )
     
 class Collection(db.Model):
-    user_id         = db.StringProperty(required=True)
-    collection_name = db.StringProperty(required=True)
+    profile = db.ReferenceProperty(Profile, required=True)
+    name    = db.StringProperty(required=True)
 
     builtin_names = (
         'clients', 'crypto', 'forms', 'history', 'keys', 'meta', 
         'bookmarks', 'prefs','tabs','passwords'
     )
 
-    @classmethod
-    def get_by_collection_name_and_user_id(cls, collection_name, user_id):
-        """Get a collection by name and user"""
-        return (
-            cls.all()
-            .filter('collection_name =', collection_name)
-            .filter('user_id =', user_id)
-            .get()        
-        )
-
-    @classmethod
-    def delete_by_collection_name_and_user_id(cls, collection_name, user_id):
-        q = (
-            WBO.all()
-            .filter('collection_name =', collection_name)
-            .filter('user_id =', user_id)
-        )
+    def delete(self):
+        q = WBO.get_by_collection(self)
         for w in q: w.delete()
-        c = cls.get_by_collection_name_and_user_id(collection_name, user_id)
-        if c: c.delete()
+        db.Model.delete(self)
 
     @classmethod
-    def is_builtin(cls, collection_name):
+    def build_key_name(cls, profile, name):
+        return 'collection:%s:%s' % (profile.key(), name)
+
+    @classmethod
+    def get_by_profile_and_name(cls, profile, name):
+        """Get a collection by name and user"""
+        return Collection.get_or_insert(
+            parent=profile,
+            key_name=cls.build_key_name(profile, name),
+            profile=profile,
+            name=name
+        )
+
+    @classmethod
+    def is_builtin(cls, name):
         """Determine whether a named collection is built-in"""
-        return collection_name in cls.builtin_names
+        return name in cls.builtin_names
 
     @classmethod
-    def get_timestamps(cls, user_id):
+    def get_timestamps(cls, profile):
         """Assemble last modified for user's built-in and ad-hoc collections"""
-        c_list = {}
-
-        for name in cls.builtin_names:
-            w = (
-                WBO.all()
-                .filter('collection_name =', name)
-                .filter('user_id =', user_id)
-                .order('-modified')
-                .get()
-            )
-            c_list[name] = w and w.modified or 0
-
-        q = Collection.all().filter('user_id =', user_id)
+        c_list = dict((n, 0) for n in cls.builtin_names)
+        q = Collection.all().ancestor(profile)
         for c in q:
-            w = (
-                WBO.all()
-                .filter('collection_name =', c.collection_name)
-                .filter('user_id =', user_id)
-                .order('-modified')
-                .get()
-            )
-            c_list[c.collection_name] = w and w.modified or 0
-
+            w = WBO.all().ancestor(c).order('-modified').get()
+            c_list[c.name] = w and w.modified or 0
         return c_list 
 
     @classmethod
-    def get_counts(cls, user_id):
+    def get_counts(cls, profile):
         """Assemble counts for user's built-in and ad-hoc collections"""
-        counts = {}
-
-        for name in cls.builtin_names:
-            counts[name] = (
-                WBO.all()
-                .filter('collection_name =', name)
-                .filter('user_id =', user_id)
-                .count()
-            )
-
-        q = Collection.all().filter('user_id =', user_id)
+        c_list = dict((n, 0) for n in cls.builtin_names)
+        q = Collection.all().ancestor(profile)
         for c in q:
-            counts[c.collection_name] = (
-                WBO.all()
-                .filter('collection_name =', c.collection_name)
-                .filter('user_id =', user_id)
-                .count()
-            )
-
-        return counts 
+            c_list[c.name] = WBO.all().ancestor(c).count()
+        return c_list 
 
 class WBO(db.Model):
+    collection      = db.ReferenceProperty(Collection, required=True)
     wbo_id          = db.StringProperty(required=True)
-    user_id         = db.StringProperty(required=True)
-    collection_name = db.StringProperty(required=True)
     modified        = db.FloatProperty(required=True)
     parentid        = db.StringProperty()
     predecessorid   = db.StringProperty()
@@ -143,20 +100,11 @@ class WBO(db.Model):
     payload         = db.TextProperty(required=True)
     payload_size    = db.IntegerProperty(default=0)
 
-    def put(self):
-        db.Model.put(self)
-        # Ensure Collection entities exist for ad-hoc collections.
-        # TODO: Use memcache to optimize here.
-        if not Collection.is_builtin(self.collection_name):
-            c = Collection.get_by_collection_name_and_user_id(
-                self.collection_name, self.user_id
-            )
-            if not c:
-                c = Collection(
-                    user_id = self.user_id,
-                    collection_name = self.collection_name
-                )
-                c.put()
+    @classmethod
+    def build_key_name(cls, collection, wbo_id):
+        return 'wbo-%s-%s-%s' % (
+            collection.profile.user_name, collection.name, wbo_id
+        )
 
     @classmethod
     def get_time_now(cls):
@@ -169,12 +117,13 @@ class WBO(db.Model):
         return round(st,2)
 
     @classmethod
-    def get_by_user_id_collection_id_and_wbo_id(cls, user_id, collection_name, wbo_id):
+    def get_by_collection(cls, collection):
+        return cls.all().ancestor(collection)
+
+    @classmethod
+    def get_by_collection_and_wbo_id(cls, collection, wbo_id):
         """Get a WBO by wbo_id"""
-        return (
-            cls.all()
-            .filter('wbo_id =', wbo_id)
-            .filter('collection_name =', collection_name)
-            .order('-modified')
-            .get() 
+        return cls.get_by_key_name(
+            cls.build_key_name(collection, wbo_id),
+            parent=collection
         )

@@ -13,12 +13,9 @@ from fxsync.models import Profile, Collection, WBO
 
 def main():
     """Main entry point for controller"""
-    application = webapp.WSGIApplication(
-        [
-            ('/start', StartHandler),
-        ], 
-        debug=True
-    )
+    application = webapp.WSGIApplication([
+        ('/start', StartHandler),
+    ], debug=True)
     util.run_wsgi_app(application)
 
 class StartHandler(webapp.RequestHandler):
@@ -44,7 +41,6 @@ class StartHandler(webapp.RequestHandler):
         if not profile and 'create_profile' == action:
             # Create a new profile, with auto-generated password
             new_profile = Profile(
-                user_id   = user.user_id(),
                 user_name = user.nickname(),
                 password  = Profile.generate_password()
             )
