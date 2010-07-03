@@ -298,7 +298,7 @@ class SyncApiTests(unittest.TestCase):
         """Exercise collection retrieval on sortindex range"""
         (p, c, ah) = (self.profile, self.collection, self.auth_header)
 
-        wbo_sortindexes = ( -100, -10, -1, 1, 10, 23, 100, 999, 1000, 9999 )
+        wbo_sortindexes = ( -100, -10, -1, 0, 1, 10, 23, 100, 999, 1000, 9999 )
 
         wbos = [ ]
         for idx in range(len(wbo_sortindexes)):
@@ -445,19 +445,85 @@ class SyncApiTests(unittest.TestCase):
                 self.log.debug("RESULT   %s" % resp.body)
                 self.assertEqual(expected_ids, result_data)
 
-#    def test_retrieval_by_direct_output(self):
-#        self.fail("TODO")
-#
+    def test_retrieval_by_multiple_criteria(self):
+        """Exercise retrieval when using multiple criteria"""
+        (p, c, ah) = (self.profile, self.collection, self.auth_header)
+
+        ids = [ 
+            '1', '2', '3', '4', '5', '6', 
+            '9', '10', '11', '15', '16' 
+        ]
+        index_above   = 2
+        index_below   = 13
+        parentid      = 'a2'
+        predecessorid = 'b3'
+
+        value_keys = (
+            'expected', 'wbo_id', 'sortindex', 'parentid', 'predecessorid'
+        )
+        value_sets = (
+            (False,  '0',  0, 'a1', 'b3'),
+            (False,  '1',  1, 'a1', 'b3'),
+            (False,  '2',  2, 'a1', 'b3'),
+            (False,  '3',  3, 'a1', 'b3'),
+            (False,  '4',  4, 'a1', 'b3'),
+            ( True,  '5',  5, 'a2', 'b3'),
+            ( True,  '6',  6, 'a2', 'b3'),
+            (False,  '7',  7, 'a2', 'b3'),
+            (False,  '8',  8, 'a2', 'b3'),
+            ( True,  '9',  9, 'a2', 'b3'),
+            ( True, '10', 10, 'a2', 'b3'),
+            (False, '11', 11, 'a2', 'b1'),
+            (False, '12', 12, 'a2', 'b1'),
+            (False, '13', 13, 'a3', 'b1'),
+            (False, '14', 14, 'a3', 'b1'),
+            (False, '15', 15, 'a3', 'b1'),
+            (False, '16', 16, 'xx', 'xx'),
+        )
+
+        wbos = [ ]
+        expected_ids = [ ]
+        for idx in range(len(value_sets)):
+            values = dict(zip(value_keys, value_sets[idx]))
+            
+            w = WBO(
+                wbo_id=values['wbo_id'], 
+                parent=c, collection=c,
+                modified=WBO.get_time_now(), 
+                parentid=values['parentid'],
+                predecessorid=values['predecessorid'],
+                sortindex=values['sortindex'], 
+                payload='payload-%s' % idx, payload_size=9
+            )
+            w.put()
+            wbos.append(w)
+
+            if values['expected']: 
+                expected_ids.append(w.wbo_id)
+
+        params = 'index_above=%s&index_below=%s&parentid=%s&predecessorid=%s&ids=%s' % (
+            index_above, index_below, parentid, predecessorid, ','.join(ids)
+        )
+        url = '/sync/1.0/%s/storage/%s?%s' % (p.user_name, c.name, params)
+        resp = self.app.get(url, headers=ah)
+        result_data = simplejson.loads(resp.body)
+
+        self.log.debug("URL      %s" % url)
+        self.log.debug("EXPECTED %s" % simplejson.dumps(expected_ids))
+        self.log.debug("RESULT   %s" % resp.body)
+        self.assertEqual(expected_ids, result_data)
+
 #    def test_alternate_output_formats(self):
 #        """Exercise alternate output formats for WBOs"""
-#        self.fail("TODO")
-#
-#    def test_retrieval_by_multiple_criteria(self):
 #        self.fail("TODO")
 #
 #    def test_bulk_update(self):
 #        """Exercise bulk collection update"""
 #        self.fail("TODO")
+#
+#    def test_retrieval_by_direct_output(self):
+#        self.fail("TODO")
+#
 
     def build_wbo_set(self, num_wbos=15):
         (p, c, ah) = (self.profile, self.collection, self.auth_header)
