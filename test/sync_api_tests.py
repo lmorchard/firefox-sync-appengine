@@ -449,6 +449,7 @@ class SyncApiTests(unittest.TestCase):
         """Exercise retrieval when using multiple criteria"""
         (p, c, ah) = (self.profile, self.collection, self.auth_header)
 
+        # Criteria set for testing.
         ids = [ 
             '1', '2', '3', '4', '5', '6', 
             '9', '10', '11', '15', '16' 
@@ -458,6 +459,7 @@ class SyncApiTests(unittest.TestCase):
         parentid      = 'a2'
         predecessorid = 'b3'
 
+        # Table of expected WBO values and expectation of presence in results
         value_keys = (
             'expected', 'wbo_id', 'sortindex', 'parentid', 'predecessorid'
         )
@@ -481,6 +483,8 @@ class SyncApiTests(unittest.TestCase):
             (False, '16', 16, 'xx', 'xx'),
         )
 
+        # Build the WBOs using the table above, and note which ones are
+        # expected to appear in results.
         wbos = [ ]
         expected_ids = [ ]
         for idx in range(len(value_sets)):
@@ -500,7 +504,8 @@ class SyncApiTests(unittest.TestCase):
 
             if values['expected']: 
                 expected_ids.append(w.wbo_id)
-
+        
+        # Build and run a retrieval query using all of the criteria.
         params = 'index_above=%s&index_below=%s&parentid=%s&predecessorid=%s&ids=%s' % (
             index_above, index_below, parentid, predecessorid, ','.join(ids)
         )
@@ -513,12 +518,12 @@ class SyncApiTests(unittest.TestCase):
         self.log.debug("RESULT   %s" % resp.body)
         self.assertEqual(expected_ids, result_data)
 
-#    def test_alternate_output_formats(self):
-#        """Exercise alternate output formats for WBOs"""
-#        self.fail("TODO")
-#
 #    def test_bulk_update(self):
 #        """Exercise bulk collection update"""
+#        self.fail("TODO")
+#
+#    def test_alternate_output_formats(self):
+#        """Exercise alternate output formats for WBOs"""
 #        self.fail("TODO")
 #
 #    def test_retrieval_by_direct_output(self):
