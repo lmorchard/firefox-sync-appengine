@@ -21,14 +21,19 @@ handlers:
   static_dir: htdocs/css
 - url: /sync/user/1.0/.*
   script: controllers/user_api.py
+  secure: always
 - url: /sync/1.0/.*
   script: controllers/sync_api.py
+  secure: always
 - url: /admin/.*
   script: $PYTHON_LIB/google/appengine/ext/admin
   login: admin
+  secure: always
 - url: /test.*
   login: admin
   script: controllers/gaeunit.py
+  secure: always
 - url: .*
   script: controllers/main.py
   login: required
+  secure: always
