@@ -17,16 +17,29 @@ class SyncApiTests(unittest.TestCase):
     USER_NAME = 'tester123'
     PASSWD    = 'QsEdRgTh12345'
 
-    id_sets = {
-        'parentid': ( 
-            'a1234','a5678','a5678','a1357','a1357',
-            'a1357','a2468','a1000','a9999','a0010'
-        ),
-        'predecessorid': (
-            'b1357','b2468','b1000','b9999','b0010',
-            'b1234','b5678','b5678','b1357','b1357'
-        )
-    }
+    value_keys = (
+        'id', 'sortindex', 'parentid', 'predecessorid', 'payload'
+    )
+    value_sets = (
+        ('xx00',  0, 'a1', 'b3', 'payload-xx00'),
+        ('xx01',  1, 'a1', 'b3', 'payload-xx01'),
+        ('xx02',  2, 'a1', 'b3', 'payload-xx02'),
+        ('xx03',  3, 'a1', 'b3', 'payload-xx03'),
+        ('xx04',  4, 'a1', 'b3', 'payload-xx04'),
+        ('xx05',  5, 'a2', 'b3', 'payload-xx05'),
+        ('xx06',  6, 'a2', 'b3', 'payload-xx06'),
+        ('xx07',  7, 'a2', 'b3', 'payload-xx07'),
+        ('xx08',  8, 'a2', 'b3', 'payload-xx08'),
+        ('xx09',  9, 'a2', 'b3', 'payload-xx09'),
+        ('xx10', 10, 'a2', 'b3', 'payload-xx10'),
+        ('xx11', 11, 'a2', 'b1', 'payload-xx11'),
+        ('xx12', 12, 'a2', 'b1', 'payload-xx12'),
+        ('xx13', 13, 'a3', 'b1', 'payload-xx13'),
+        ('xx14', 14, 'a3', 'b1', 'payload-xx14'),
+        ('xx15', 15, 'a3', 'b1', 'payload-xx15'),
+        ('xx16', 16, 'xx', 'yy', 'payload-xx16'),
+        ('xx17', 17, 'xx', 'yy', 'payload-xx17'),
+    )
 
     def setUp(self):
         """Prepare for unit test"""
@@ -47,6 +60,13 @@ class SyncApiTests(unittest.TestCase):
         self.auth_header = self.build_auth_header(p.user_name, p.password)
 
         self.collection = Collection.get_by_profile_and_name(p, 'history')
+
+        self.wbo_values = [
+            dict(zip(self.value_keys, value_set))
+            for value_set in self.value_sets
+        ]
+        for w in self.wbo_values:
+            w['payload'] = simplejson.dumps({ 'stuff': w['payload'] })
         
         # Build the app test harness.
         self.app = webtest.TestApp(sync_api.application())
@@ -73,10 +93,70 @@ class SyncApiTests(unittest.TestCase):
         )
         self.assertEqual('200 OK', resp.status)
 
+    def test_item_validation(self):
+        """Exercise WBO data validation"""
+        (p, c, ah) = (self.profile, self.collection, self.auth_header)
+        too_long_id = ''.join('x' for x in range(100))
+
+        self.assert_('invalid id' in WBO.validate({ 'id': '' }))
+        self.assert_('invalid id' in WBO.validate({ 'id': 'foo/bar' }))
+        self.assert_('invalid id' in WBO.validate({ 'id': too_long_id }))
+        self.assert_('invalid id' not in WBO.validate({ 'id': 'abcd' }))
+
+        self.assert_('invalid collection' in WBO.validate({ }))
+        self.assert_('invalid collection' in 
+            WBO.validate({ 'collection': Collection(name=too_long_id, profile=p) }))
+
+        self.assert_('invalid predecessorid' in 
+            WBO.validate({ 'collection':c, 'predecessorid': too_long_id }))
+        self.assert_('invalid predecessorid' in 
+            WBO.validate({ 'collection':c, 'predecessorid': 'abcdef' }))
+
+        w = WBO(
+            parent=c, collection=c, wbo_id='abcdef', 
+            modified=WBO.get_time_now(), payload='test'
+        )
+        w.put()
+
+        self.assert_('invalid predecessorid' not in 
+            WBO.validate({ 'collection':c, 'predecessorid': 'abcdef' }))
+
+        self.assert_('invalid predecessorid' in 
+            WBO.validate({ 'collection':c, 'predecessorid': too_long_id }))
+        self.assert_('invalid predecessorid' in 
+            WBO.validate({ 'collection':c, 'predecessorid': 'defghi' }))
+
+        w = WBO(
+            parent=c, collection=c, wbo_id='defghi', 
+            modified=WBO.get_time_now(), payload='test'
+        )
+        w.put()
+
+        self.assert_('invalid predecessorid' not in 
+            WBO.validate({ 'collection':c, 'predecessorid': 'abcdef' }))
+
+        self.assert_('invalid modified date' in WBO.validate({ 'modified': 'abc' }))
+        self.assert_('no modification date' in WBO.validate({ }))
+        self.assert_('no modification date' in WBO.validate({ 'modified': '' }))
+
+        self.assert_('invalid sortindex' in WBO.validate({ 'sortindex': 'abcd' }))
+        self.assert_('invalid sortindex' in WBO.validate({ 'sortindex': -1000000000 }))
+        self.assert_('invalid sortindex' in WBO.validate({ 'sortindex': 1000000000 }))
+
+        self.assert_('payload needs to be json-encoded' in
+            WBO.validate({ 'payload': 'abcd' }))
+        self.assert_('payload too large' in 
+            WBO.validate({ 'payload': 'x'.join('x' for x in range(500000)) }))
+
     def test_storage_single_put_get_delete(self):
         """Exercise storing and getting a single object"""
         collection = 'foo'
-        wbo_data = { "id": 1, "sortindex": 1, "payload": "1234567890asdfghjkl" }
+        wbo_data = { 
+            "id": "abcd-1", 
+            "sortindex": 1, 
+            "payload": simplejson.dumps({ 'foo':1, 'bar':2 }),
+            "modified": WBO.get_time_now()
+        }
         auth_header = self.build_auth_header()
         storage_url = '/sync/1.0/%s/storage/%s/%s' % ( 
             self.USER_NAME, collection, wbo_data['id'] 
@@ -103,10 +183,8 @@ class SyncApiTests(unittest.TestCase):
 
         resp = self.app.get(storage_url, headers=auth_header, status=404)
 
-    def test_collection_operations(self):
+    def test_collection_counts_and_timestamps(self):
         """Exercise collection counts and timestamps"""
-        return
-
         profile = Profile(user_name = 'tester-1', password = 'pass-1')
         profile.put()
 
@@ -172,8 +250,6 @@ class SyncApiTests(unittest.TestCase):
 
     def test_multiple_profiles(self):
         """Exercise multiple profiles and collections"""
-        return
-
         expected_count_all = 0
         profiles_count = 5
         collection_names = ( 'passwords', 'keys', 'tabs', 'history', 'bookmarks' )
@@ -250,6 +326,7 @@ class SyncApiTests(unittest.TestCase):
 
         resp = self.app.get(url, headers=ah)
         result_data = simplejson.loads(resp.body)
+        self.log.debug('RESPONSE %s' % resp.body)
         self.assertEqual(w.wbo_id, result_data[0])
 
         url = '/sync/1.0/%s/storage/%s?id=%s&full=1' % (
@@ -258,6 +335,7 @@ class SyncApiTests(unittest.TestCase):
 
         resp = self.app.get(url, headers=ah)
         result_data = simplejson.loads(resp.body)
+        self.log.debug('RESPONSE %s' % resp.body)
         self.assertEqual(w.payload, result_data[0]['payload'])
 
     def test_retrieval_by_multiple_ids(self):
@@ -337,7 +415,6 @@ class SyncApiTests(unittest.TestCase):
     def test_retrieval_by_newer_and_older(self):
         """Exercise collection retrieval by modified timestamp range"""
         (p, c, ah) = (self.profile, self.collection, self.auth_header)
-
         wbos = self.build_wbo_set()
 
         # TODO: Try a variety of ranges here?
@@ -365,10 +442,14 @@ class SyncApiTests(unittest.TestCase):
     def test_retrieval_by_parent_and_predecessor(self):
         """Exercise collection retrieval by parent and predecessor IDs"""
         (p, c, ah) = (self.profile, self.collection, self.auth_header)
-
         wbos = self.build_wbo_set()
 
-        for kind, p_ids in self.id_sets.items():
+        id_sets = dict([
+            (kind, set([ getattr(w, kind) for w in wbos ]))
+            for kind in ('parentid', 'predecessorid')
+        ])
+
+        for kind, p_ids in id_sets.items():
             for p_id in set(p_ids):
 
                 expected_ids = [
@@ -393,8 +474,8 @@ class SyncApiTests(unittest.TestCase):
     def test_retrieval_with_sort(self):
         """Exercise collection retrieval with sort options"""
         (p, c, ah) = (self.profile, self.collection, self.auth_header)
-
-        wbos = self.build_wbo_set()
+        self.build_wbo_set()
+        wbos = [ w for w in WBO.all() ]
 
         sorts = {
             'oldest': lambda a,b: cmp(a.modified,  b.modified),
@@ -420,8 +501,8 @@ class SyncApiTests(unittest.TestCase):
     def test_retrieval_with_limit_offset(self):
         """Exercise collection retrieval with limit and offset"""
         (p, c, ah) = (self.profile, self.collection, self.auth_header)
-
-        wbos = self.build_wbo_set()
+        self.build_wbo_set()
+        wbos = [ w for w in WBO.all() ]
 
         max_limit  = len(wbos) / 2
         max_offset = len(wbos) / 2
@@ -448,6 +529,7 @@ class SyncApiTests(unittest.TestCase):
     def test_retrieval_by_multiple_criteria(self):
         """Exercise retrieval when using multiple criteria"""
         (p, c, ah) = (self.profile, self.collection, self.auth_header)
+        wbos = self.build_wbo_set()
 
         # Criteria set for testing.
         ids = [ 
@@ -459,50 +541,11 @@ class SyncApiTests(unittest.TestCase):
         parentid      = 'a2'
         predecessorid = 'b3'
 
-        # Table of expected WBO values and expectation of presence in results
-        value_keys = (
-            'expected', 'wbo_id', 'sortindex', 'parentid', 'predecessorid'
-        )
-        value_sets = (
-            (False,  '0',  0, 'a1', 'b3'),
-            (False,  '1',  1, 'a1', 'b3'),
-            (False,  '2',  2, 'a1', 'b3'),
-            (False,  '3',  3, 'a1', 'b3'),
-            (False,  '4',  4, 'a1', 'b3'),
-            ( True,  '5',  5, 'a2', 'b3'),
-            ( True,  '6',  6, 'a2', 'b3'),
-            (False,  '7',  7, 'a2', 'b3'),
-            (False,  '8',  8, 'a2', 'b3'),
-            ( True,  '9',  9, 'a2', 'b3'),
-            ( True, '10', 10, 'a2', 'b3'),
-            (False, '11', 11, 'a2', 'b1'),
-            (False, '12', 12, 'a2', 'b1'),
-            (False, '13', 13, 'a3', 'b1'),
-            (False, '14', 14, 'a3', 'b1'),
-            (False, '15', 15, 'a3', 'b1'),
-            (False, '16', 16, 'xx', 'xx'),
-        )
-
-        # Build the WBOs using the table above, and note which ones are
-        # expected to appear in results.
-        wbos = [ ]
-        expected_ids = [ ]
-        for idx in range(len(value_sets)):
-            values = dict(zip(value_keys, value_sets[idx]))
-            
-            w = WBO(
-                wbo_id=values['wbo_id'], 
-                parent=c, collection=c,
-                modified=WBO.get_time_now(), 
-                parentid=values['parentid'],
-                predecessorid=values['predecessorid'],
-                sortindex=values['sortindex'], 
-                payload='payload-%s' % idx, payload_size=9
-            )
-            w.put()
-            wbos.append(w)
-
-            if values['expected']: 
+        expected_ids = []
+        for w in wbos:
+            if (index_above < w.sortindex and index_below > w.sortindex and
+                    parentid == w.parentid and predecessorid == w.predecessorid and 
+                    w.wbo_id in ids):
                 expected_ids.append(w.wbo_id)
         
         # Build and run a retrieval query using all of the criteria.
@@ -518,35 +561,128 @@ class SyncApiTests(unittest.TestCase):
         self.log.debug("RESULT   %s" % resp.body)
         self.assertEqual(expected_ids, result_data)
 
-#    def test_bulk_update(self):
-#        """Exercise bulk collection update"""
-#        self.fail("TODO")
-#
-#    def test_alternate_output_formats(self):
-#        """Exercise alternate output formats for WBOs"""
-#        self.fail("TODO")
-#
-#    def test_retrieval_by_direct_output(self):
-#        self.fail("TODO")
-#
+    def test_bulk_update(self):
+        """Exercise bulk collection update"""
+        (p, c, ah)  = (self.profile, self.collection, self.auth_header)
+        auth_header = self.build_auth_header()
+        storage_url = '/sync/1.0/%s/storage/%s' % (p.user_name, c.name)
+
+        self.build_wbo_parents_and_predecessors()
+
+        bulk_data = [
+            { 'id': '' },
+            { 'id': 'foo/bar', 'sortindex': 'abcd' },
+            { 'id': 'a-1000',  'sortindex':-1000000000 },
+            { 'id': 'a-1001',  'sortindex': 1000000000 },
+            { 'id': 'a-1002',  'parentid': 'notfound' },
+            { 'id': 'a-1003',  'predecessorid': 'notfound' },
+            { 'id': 'a-1004',  'payload': 'invalid' },
+        ]
+        bulk_data.extend(self.wbo_values)
+
+        self.log.debug("DATA %s" % simplejson.dumps(bulk_data))
+
+        resp = self.app.post(
+            storage_url, headers=auth_header, 
+            params=simplejson.dumps(bulk_data)
+        )
+        self.assertEqual('200 OK', resp.status)
+        result_data = simplejson.loads(resp.body)
+
+        self.log.debug("RESULT %s" % resp.body)
+
+        self.assert_(WBO.get_time_now() >= float(result_data['modified']))
+
+        expected_ids = [ w['id'] for w in self.wbo_values ]
+        self.assertEqual(expected_ids, result_data['success'])
+        
+        expected_failures = {
+            "": ["invalid id"], 
+            "a-1004": ["payload needs to be json-encoded"], 
+            "a-1003": ["invalid predecessorid"], 
+            "a-1002": ["invalid parentid"], 
+            "a-1001": ["invalid sortindex"], 
+            "a-1000": ["invalid sortindex"], 
+            "foo/bar": ["invalid id", "invalid sortindex"]
+        }
+        self.assertEqual(expected_failures, result_data['failed'])
+
+        stored_ids = [ w.wbo_id for w in WBO.all() ]
+        for wbo_id in expected_ids:
+            self.assert_(wbo_id in stored_ids)
+
+    def test_alternate_output_formats(self):
+        """Exercise alternate output formats"""
+        (p, c, ah) = (self.profile, self.collection, self.auth_header)
+        self.build_wbo_set()
+        wbos = [ w for w in WBO.all() ]
+        expected_ids = [ w.wbo_id for w in wbos ]
+
+        url = '/sync/1.0/%s/storage/%s?full=1' % (p.user_name, c.name)
+        resp = self.app.get(url, headers=ah)
+        result_data = simplejson.loads(resp.body)
+        result_ids = [ x['id'] for x in result_data ]
+        self.assertEqual(expected_ids, result_ids)
+
+        url = '/sync/1.0/%s/storage/%s?full=1' % (p.user_name, c.name)
+        headers = { 'Accept': 'application/newlines' }
+        headers.update(ah)
+        resp = self.app.get(url, headers=headers)
+        lines = resp.body.splitlines()
+        for line in lines:
+            data = simplejson.loads(line)
+            self.assert_(data['id'] in expected_ids)
+
+        if (False):
+            url = '/sync/1.0/%s/storage/%s?full=1' % (p.user_name, c.name)
+            headers = { 'Accept': 'application/whoisi' }
+            headers.update(ah)
+            resp = self.app.get(url, headers=headers)
+            lines = "\n".split(resp.body)
+
+            self.log.debug("URL      %s" % url)
+            self.log.debug("RESULT   %s" % resp.body)
+            self.log.debug("RESULT2  %s" % simplejson.dumps(lines))
+            self.log.debug("LINES    %s" % len(lines))
+
+    def build_wbo_parents_and_predecessors(self):
+        (p, c, ah) = (self.profile, self.collection, self.auth_header)
+
+        id_sets = dict([
+            (kind, set([ w[kind] for w in self.wbo_values ]))
+            for kind in ('parentid', 'predecessorid')
+        ])
+
+        for kind, id_set in id_sets.items():
+            for wbo_id in id_set:
+                w = WBO(
+                    parent=c, collection=c,
+                    modified = WBO.get_time_now(), 
+                    wbo_id   = wbo_id, 
+                    payload  = simplejson.dumps({'random':'xxx'})
+                )
+                w.put()
 
     def build_wbo_set(self, num_wbos=15):
         (p, c, ah) = (self.profile, self.collection, self.auth_header)
 
-        num_wbos = 10
+        self.build_wbo_parents_and_predecessors()
 
-        wbos = [ ]
-        for idx in range(num_wbos):
-            w = WBO(wbo_id='%s' % idx, parent=c, collection=c,
+        wbos = []
+        for values in self.wbo_values:
+            w = WBO(
+                parent=c, collection=c,
                 modified=WBO.get_time_now(), 
-                parentid=self.id_sets['parentid'][idx],
-                predecessorid=self.id_sets['predecessorid'][idx],
-                sortindex=random.randint(0,100000), 
-                payload='payload-%s' % idx, payload_size=9)
+                wbo_id        = values['id'], 
+                parentid      = values['parentid'],
+                predecessorid = values['predecessorid'],
+                sortindex     = values['sortindex'], 
+                payload       = values['payload']
+            )
             w.put()
             wbos.append(w)
-            # HACK: Delay to ensure modified stamps vary
-            time.sleep(0.1)
+            time.sleep(0.1) # HACK: Delay to ensure modified stamps vary
+
         return wbos
 
     def put_random_wbo(self, url, auth_header):
@@ -554,7 +690,9 @@ class SyncApiTests(unittest.TestCase):
         wbo_id = random.randint(0, 1000000)
         wbo_json = simplejson.dumps({
             'sortindex': random.randint(0, 1000),
-            'payload': ''.join(random.sample(string.letters, 16))
+            'payload': simplejson.dumps({
+                'random': ''.join(random.sample(string.letters, 16))
+            })
         })
         return self.app.put(
             '%s/%s' % (url, wbo_id), 
@@ -571,4 +709,3 @@ class SyncApiTests(unittest.TestCase):
                 '%s:%s' % (user_name, passwd)
             )
         }
-

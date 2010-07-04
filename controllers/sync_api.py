@@ -5,7 +5,7 @@ import sys, os
 base_dir = os.path.dirname( os.path.dirname(__file__) )
 sys.path.extend([ os.path.join(base_dir, d) for d in ( 'lib', 'extlib' ) ])
 
-import logging, simplejson
+import logging, simplejson, struct
 from datetime import datetime
 from time import mktime
 from google.appengine.api import users
@@ -13,6 +13,20 @@ from google.appengine.ext import webapp, db
 from google.appengine.ext.webapp import util, template
 from fxsync.utils import profile_auth, json_request, json_response
 from fxsync.models import Profile, Collection, WBO
+
+WEAVE_ERROR_INVALID_PROTOCOL = 1
+WEAVE_ERROR_INCORRECT_CAPTCHA = 2
+WEAVE_ERROR_INVALID_USERNAME = 3
+WEAVE_ERROR_NO_OVERWRITE = 4
+WEAVE_ERROR_USERID_PATH_MISMATCH = 5
+WEAVE_ERROR_JSON_PARSE = 6
+WEAVE_ERROR_MISSING_PASSWORD = 7
+WEAVE_ERROR_INVALID_WBO = 8
+WEAVE_ERROR_BAD_PASSWORD_STRENGTH = 9
+WEAVE_ERROR_INVALID_RESET_CODE = 10
+WEAVE_ERROR_FUNCTION_NOT_SUPPORTED = 11
+WEAVE_ERROR_NO_EMAIL = 12
+WEAVE_ERROR_INVALID_COLLECTION = 13
 
 def main():
     """Main entry point for controller"""
@@ -90,43 +104,24 @@ class StorageItemHandler(SyncApiBaseRequestHandler):
     @json_response
     def put(self, user_name, collection_name, wbo_id):
         """Insert or update an item in the collection"""
-        collection = Collection.get_by_profile_and_name(
-            self.request.profile, collection_name
-        )
-
-        wbo_now = WBO.get_time_now()
-        body = self.request.body_json
-
-        wbo_data = dict((k,f(body[k])) for k,f in (
-            ('sortindex', int), 
-            ('parentid', str),
-            ('predecessorid', str), 
-            ('payload', str),
-        ) if (k in body))
-        
-        wbo_data.update({
-            'collection': collection,
-            'modified': wbo_now,
-            'wbo_id': wbo_id,
-            'payload_size': len(wbo_data['payload']),
+        self.request.body_json.update({
+            'user_name': user_name, 
+            'collection_name': collection_name,
+            'wbo_id': wbo_id
         })
-
-        wbo = WBO.get_by_collection_and_wbo_id(collection, wbo_id)
+        (wbo, errors) = WBO.insert_or_update(self.request.body_json)
         if not wbo:
-            wbo_data['key_name'] = WBO.build_key_name(collection, wbo_id)
-            wbo_data['parent'] = collection.key()
-            wbo = WBO(**wbo_data)
+            self.response.set_status(400, message="Bad Request")
+            self.response.out.write(WEAVE_ERROR_INVALID_WBO)
+            return None
         else:
-            for k,v in wbo_data.items(): setattr(wbo, k, v)
-        wbo.put()
-
-        return wbo.modified
+            return wbo.modified
 
 class StorageCollectionHandler(SyncApiBaseRequestHandler):
 
     @profile_auth
-    @json_response
     def get(self, user_name, collection_name):
+        """Filtered retrieval of WBOs from a collection"""
         collection = Collection.get_by_profile_and_name(
             self.request.profile, collection_name
         )
@@ -148,18 +143,68 @@ class StorageCollectionHandler(SyncApiBaseRequestHandler):
         for n in ('older', 'newer'):
             if params[n]: params[n] = float(params[n])
 
-        self.log.debug('params %s' % (simplejson.dumps(params)))
+        # TODO: Need a generator here? 
+        # TODO: Find out how not to load everything into memory.
 
-        return collection.retrieve(**params)
+        out = collection.retrieve(**params)
+
+        accept = ('Accept' not in self.request.headers 
+            and 'application/json' or self.request.headers['Accept'])
+
+        if 'application/newlines' == accept:
+            self.response.headers['Content-Type'] = 'application/newlines'
+            for x in out:
+                self.response.out.write("%s\n" % simplejson.dumps(x))
+
+            #elif 'application/whoisi' == accept:
+            #    self.response.headers['Content-Type'] = 'application/whoisi'
+            #    for x in out:
+            #        if params['full']:
+            #            self.response.out.write('%s%s' % (
+            #                struct.pack('!I', x['id']), 
+            #                simplejson.dumps(x)
+            #            ))
+            #        else:
+            #            self.response.out.write('%s%s' % (
+            #                struct.pack('!I', x), 
+            #                simplejson.dumps(x)
+            #            ))
+
+        else:
+            self.response.headers['Content-Type'] = 'application/json'
+            rv = [x for x in out]
+            self.response.out.write(simplejson.dumps(rv))
 
     @profile_auth
+    @json_request
+    @json_response
     def post(self, user_name, collection_name):
-        # BULK UPDATE: https://wiki.mozilla.org/Labs/Weave/Sync/1.0/API#POST
-        self.response.out.write('StorageCollectionHandler %s' % user_name)
+        """Bulk update of WBOs in a collection"""
+        out = { 'modified': None, 'success': [], 'failed': {} }
+
+        collection = Collection.get_by_profile_and_name(
+            self.request.profile, collection_name
+        )
+
+        self.log = logging.getLogger()
+        for wbo_data in self.request.body_json:
+            if 'id' not in wbo_data: continue
+            self.log.debug("WBO %s" % simplejson.dumps(wbo_data))
+            wbo_data['collection'] = collection
+            wbo_id = wbo_data['id']
+            (wbo, errors) = WBO.insert_or_update(wbo_data)
+            out['modified'] = wbo.modified
+            if wbo:
+                out['success'].append(wbo_id)
+            else:
+                out['failed'][wbo_id] = errors
+
+        return out
 
     @profile_auth
     @json_response
     def delete(self, user_name, collection_name):
+        """Bulk deletion of WBOs from a collection"""
         # TODO: Accept params for get() to selectively delete.
         collection = Collection.get_by_profile_and_name(
             self.request.profile, collection_name

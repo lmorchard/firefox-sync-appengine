@@ -15,19 +15,21 @@ def json_request(func):
     def cb(wh, *args, **kwargs):
         try:
             wh.request.body_json = simplejson.loads(wh.request.body)
-            return func(wh, *args, **kwargs)
         except ValueError:
             wh.response.set_status(400, message="Bad Request")
             wh.response.out.write("Invalid JSON request body")
+        else:
+            return func(wh, *args, **kwargs)
     return cb
 
 def json_response(func):
     """Decorator to auto-encode return value as JSON response"""
     def cb(wh, *args, **kwargs):
         rv = func(wh, *args, **kwargs)
-        wh.response.headers['Content-Type'] = 'application/json'
-        wh.response.out.write(simplejson.dumps(rv))
-        return rv
+        if rv is not None:
+            wh.response.headers['Content-Type'] = 'application/json'
+            wh.response.out.write(simplejson.dumps(rv))
+            return rv
     return cb
 
 def profile_auth(func):

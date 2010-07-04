@@ -66,9 +66,9 @@ class Collection(db.Model):
 
         self.log = logging.getLogger()
 
-        limit  = limit and limit or 1000
-        offset = offset and offset or 0
-        sort   = sort and sort or 'index'
+        limit  = (limit is not None) and limit or 1000 #False
+        offset = (offset is not None) and offset or 0 #False
+        sort   = (sort is not None) and sort or 'index'
 
         filter_used = False
         key_sets = []
@@ -128,16 +128,11 @@ class Collection(db.Model):
 
         # TODO: direct output!
 
-        # Fetch the set of WBOs, using given limit and offset
-        wbos = q.fetch(limit, offset)
-
         # Return IDs / full objects as appropriate for full option.
         if not full:
-            out = [ w.wbo_id for w in wbos ]
+            return ( w.wbo_id for w in q.fetch(limit, offset) )
         else:
-            out = [ w.to_dict() for w in wbos ]
-
-        return out
+            return ( w.to_dict() for w in q.fetch(limit, offset) )
 
     @classmethod
     def build_key_name(cls, profile, name):
@@ -187,6 +182,9 @@ class WBO(db.Model):
     payload         = db.TextProperty(required=True)
     payload_size    = db.IntegerProperty(default=0)
 
+    # TODO: Move this to config somewhere
+    WEAVE_PAYLOAD_MAX_SIZE = 262144 
+
     def to_dict(self):
         """Produce a dict representation, usable for JSON response"""
         wbo_data = dict( (k,getattr(self, k)) for k in ( 
@@ -197,10 +195,57 @@ class WBO(db.Model):
         return wbo_data
 
     @classmethod
-    def build_key_name(cls, collection, wbo_id):
-        return 'wbo-%s-%s-%s' % (
-            collection.profile.user_name, collection.name, wbo_id
-        )
+    def insert_or_update(cls, data_in):
+        wbo, errors = None, []
+
+        if 'collection' not in data_in:
+            if 'user_name' in data_in:
+                data_in['profile'] = Profile.get_by_user_name(data_in['user_name'])
+                del data_in['user_name']
+
+            if 'collection_name' in data_in:
+                data_in['collection'] = Collection.get_by_profile_and_name(
+                    data_in['profile'], data_in['collection_name']
+                )
+                del data_in['profile']
+                del data_in['collection_name']
+
+        if 'id' in data_in:
+            data_in['wbo_id'] = data_in['id']
+            del data_in['id']
+
+        wbo_data = dict((k,data_in[k]) for k in (
+            'sortindex',
+            'parentid',
+            'predecessorid',
+            'payload',
+        ) if (k in data_in))
+        
+        wbo_now    = WBO.get_time_now()
+        wbo_id     = data_in['wbo_id']
+        collection = data_in['collection']
+
+        wbo_data.update({
+            'collection': collection,
+            'parent': collection,
+            'modified': wbo_now,
+            'wbo_id': wbo_id,
+        })
+
+        if 'payload' in wbo_data:
+            wbo_data['payload_size'] = len(wbo_data['payload'])
+
+        errors = cls.validate(wbo_data)
+        if len(errors) > 0: return (None, errors)
+
+        wbo = WBO.get_by_collection_and_wbo_id(collection, wbo_id)
+        if not wbo:
+            wbo = WBO(**wbo_data)
+        else:
+            for k,v in wbo_data.items(): setattr(wbo, k, v)
+        wbo.put()
+
+        return (wbo, errors)
 
     @classmethod
     def get_time_now(cls):
@@ -220,3 +265,63 @@ class WBO(db.Model):
     def get_by_collection_and_wbo_id(cls, collection, wbo_id):
         """Get a WBO by wbo_id"""
         return WBO.all().ancestor(collection).filter('wbo_id =', wbo_id).get()
+
+    @classmethod
+    def exists_by_collection_and_wbo_id(cls, collection, wbo_id):
+        """Get a WBO by wbo_id"""
+        return WBO.all().ancestor(collection).filter('wbo_id =', wbo_id).count() > 0
+
+    @classmethod
+    def validate(cls, wbo_data):
+        """Validate the contents of this WBO"""
+        errors = []
+
+        if 'id' in wbo_data:
+            wbo_data['wbo_id'] = wbo_data['id']
+            del wbo_data['id']
+
+        if ('wbo_id' not in wbo_data or not wbo_data['wbo_id'] or 
+                len(wbo_data['wbo_id']) > 64 or '/' in wbo_data['wbo_id']):
+            errors.append('invalid id')
+
+        if ('collection' not in wbo_data or not wbo_data['collection'] or 
+                len(wbo_data['collection'].name)>64):
+            errors.append('invalid collection')
+
+        if ('parentid' in wbo_data):
+            if (len(wbo_data['parentid']) > 64):
+                errors.append('invalid parentid')
+            elif 'collection' in wbo_data:
+                if not cls.exists_by_collection_and_wbo_id(wbo_data['collection'], wbo_data['parentid']):
+                    errors.append('invalid parentid')
+
+        if ('predecessorid' in wbo_data):
+            if (len(wbo_data['predecessorid']) > 64):
+                errors.append('invalid predecessorid')
+            elif 'collection' in wbo_data:
+                if not cls.exists_by_collection_and_wbo_id(wbo_data['collection'], wbo_data['predecessorid']):
+                    errors.append('invalid predecessorid')
+
+        if 'modified' not in wbo_data or not wbo_data['modified']:
+            errors.append('no modification date')
+        else:
+            if type(wbo_data['modified']) is not float:
+                errors.append('invalid modified date')
+
+        if 'sortindex' in wbo_data:
+            if (type(wbo_data['sortindex']) is not int or 
+                    wbo_data['sortindex'] > 999999999 or
+                    wbo_data['sortindex'] < -999999999):
+                errors.append('invalid sortindex')
+
+        if 'payload' in wbo_data:
+            if (cls.WEAVE_PAYLOAD_MAX_SIZE and 
+                    len(wbo_data['payload']) > cls.WEAVE_PAYLOAD_MAX_SIZE):
+                errors.append('payload too large')
+            else:
+                try:
+                    data = simplejson.loads(wbo_data['payload'])
+                except ValueError, e:
+                    errors.append('payload needs to be json-encoded')
+
+        return errors
