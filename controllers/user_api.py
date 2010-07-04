@@ -28,7 +28,7 @@ class NodeHandler(webapp.RequestHandler):
     
     def get(self, user_name):
         """Return full URL to the sync cluster node (ie. the sync API)"""
-        self.response.out.write('%s/sync' % self.request.application_url)
+        self.response.out.write('%s/sync/' % self.request.application_url)
 
 class UserHandler(webapp.RequestHandler):
     """User URL handler"""

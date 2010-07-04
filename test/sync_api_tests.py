@@ -53,13 +53,14 @@ class SyncApiTests(unittest.TestCase):
         # Create a new profile for tests.
         self.profile = p = Profile(
             user_name = self.USER_NAME,
+            user_id   = '8675309',
             password  = self.PASSWD
         )
         self.profile.put()
 
         self.auth_header = self.build_auth_header(p.user_name, p.password)
 
-        self.collection = Collection.get_by_profile_and_name(p, 'history')
+        self.collection = Collection.get_by_profile_and_name(p, 'testing')
 
         self.wbo_values = [
             dict(zip(self.value_keys, value_set))
@@ -185,7 +186,7 @@ class SyncApiTests(unittest.TestCase):
 
     def test_collection_counts_and_timestamps(self):
         """Exercise collection counts and timestamps"""
-        profile = Profile(user_name = 'tester-1', password = 'pass-1')
+        profile = Profile(user_name = 'tester-1', user_id='8675309', password = 'pass-1')
         profile.put()
 
         auth_header = self.build_auth_header(
@@ -252,13 +253,13 @@ class SyncApiTests(unittest.TestCase):
         """Exercise multiple profiles and collections"""
         expected_count_all = 0
         profiles_count = 5
-        collection_names = ( 'passwords', 'keys', 'tabs', 'history', 'bookmarks' )
+        collection_names = ( 'testing', 'keys', 'tabs', 'history', 'bookmarks' )
         collection_counts = {}
 
         # Produce a set of Profiles in the datastore
         profiles = []
         for i in range(profiles_count):
-            profile = Profile(user_name='t-%s'%i, password='p-%s'%i)
+            profile = Profile(user_name='t-%s'%i, user_id='id-%s'%i, password='p-%s'%i)
             profile.put()
             profiles.append(profile)
 

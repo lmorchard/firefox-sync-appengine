@@ -105,7 +105,7 @@ class StorageItemHandler(SyncApiBaseRequestHandler):
     def put(self, user_name, collection_name, wbo_id):
         """Insert or update an item in the collection"""
         self.request.body_json.update({
-            'user_name': user_name, 
+            'profile': self.request.profile, 
             'collection_name': collection_name,
             'wbo_id': wbo_id
         })
@@ -193,8 +193,8 @@ class StorageCollectionHandler(SyncApiBaseRequestHandler):
             wbo_data['collection'] = collection
             wbo_id = wbo_data['id']
             (wbo, errors) = WBO.insert_or_update(wbo_data)
-            out['modified'] = wbo.modified
             if wbo:
+                out['modified'] = wbo.modified
                 out['success'].append(wbo_id)
             else:
                 out['failed'][wbo_id] = errors

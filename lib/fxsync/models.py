@@ -15,6 +15,7 @@ from time import mktime
 class Profile(db.Model):
     """Sync profile associated with logged in account"""
     user_name   = db.StringProperty(required=True)
+    user_id     = db.StringProperty(required=True)
     password    = db.StringProperty(required=True)
     created_at  = db.DateTimeProperty(auto_now_add=True)
     updated_at  = db.DateTimeProperty(auto_now=True)
