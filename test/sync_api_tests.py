@@ -339,6 +339,26 @@ class SyncApiTests(unittest.TestCase):
         self.log.debug('RESPONSE %s' % resp.body)
         self.assertEqual(w.payload, result_data[0]['payload'])
 
+    def test_deletion_by_multiple_ids(self):
+        """Exercise bulk deletion with a set of IDs"""
+        (p, c, ah) = (self.profile, self.collection, self.auth_header)
+        wbos = self.build_wbo_set()
+
+        wbo_ids = [w.wbo_id for w in wbos]
+        to_delete_ids = wbo_ids[0:len(wbo_ids)/2]
+        
+        url = '/sync/1.0/%s/storage/%s?ids=%s' % (
+            p.user_name, c.name, ','.join(to_delete_ids)
+        )
+
+        resp = self.app.delete(url, headers=ah)
+        self.assertEqual('200 OK', resp.status)
+        self.assert_(WBO.get_time_now() >= float(resp.body))
+
+        result_ids = [w.wbo_id for w in WBO.all()]
+        for wbo_id in to_delete_ids:
+            self.assert_(wbo_id not in result_ids)
+
     def test_retrieval_by_multiple_ids(self):
         """Exercise collection retrieval with multiple IDs"""
         (p, c, ah) = (self.profile, self.collection, self.auth_header)
@@ -645,6 +665,40 @@ class SyncApiTests(unittest.TestCase):
             self.log.debug("RESULT   %s" % resp.body)
             self.log.debug("RESULT2  %s" % simplejson.dumps(lines))
             self.log.debug("LINES    %s" % len(lines))
+
+    def test_cascading_profile_delete(self):
+        """Ensure that profile deletion cascades down to collections and WBOs"""
+        (p, c, ah) = (self.profile, self.collection, self.auth_header)
+        wbos = self.build_wbo_set()
+
+        self.assert_(WBO.all().count() > 0)
+        self.assert_(Collection.all().count() > 0)
+        self.assert_(Profile.all().count() > 0)
+
+        p.delete()
+
+        self.assertEquals(0, WBO.all().count())
+        self.assertEquals(0, Collection.all().count())
+        self.assertEquals(0, Profile.all().count())
+
+    def test_cascading_collection_delete(self):
+        """Ensure that collection deletion cascades down to WBOs"""
+        (p, c, ah) = (self.profile, self.collection, self.auth_header)
+        wbos = self.build_wbo_set()
+
+        count_all = WBO.all().count()
+        collections = [c for c in Collection.all().ancestor(p)]
+        for c in collections:
+            c_count = len([x for x in c.retrieve()])
+            c.delete()
+            count_all -= c_count
+            self.assertEqual(count_all, WBO.all().count())
+
+        self.assertEqual(0, WBO.all().count())
+
+    def test_header_x_weave_records(self):
+        """Ensure retrieved count appears in X-Weave-Records header"""
+        self.fail('TODO')
 
     def build_wbo_parents_and_predecessors(self):
         (p, c, ah) = (self.profile, self.collection, self.auth_header)

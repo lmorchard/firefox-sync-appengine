@@ -42,6 +42,17 @@ class Profile(db.Model):
         """Attempt to authenticate the given user name and password"""
         profile = cls.get_by_user_name(user_name)
         return ( profile and profile.password == password )
+
+    def delete(self):
+        w_keys = []
+        c_keys = []
+        cs = Collection.all().ancestor(self)
+        for c in cs:
+            c_keys.append(c.key())
+            w_keys.extend(WBO.all(keys_only=True).ancestor(c))
+        db.delete(w_keys)
+        db.delete(c_keys)
+        db.Model.delete(self)
     
 class Collection(db.Model):
     profile = db.ReferenceProperty(Profile, required=True)
@@ -53,19 +64,16 @@ class Collection(db.Model):
     )
 
     def delete(self):
-        q = WBO.get_by_collection(self)
-        for w in q: w.delete()
+        db.delete(WBO.all(keys_only=True).ancestor(self))
         db.Model.delete(self)
 
     def retrieve(self, 
-            full=None, direct_output=None, 
+            full=None, wbo=None, direct_output=None, 
             id=None, ids=None, 
             parentid=None, predecessorid=None, 
             newer=None, older=None, 
             index_above=None, index_below=None,
             sort=None, limit=None, offset=None):
-
-        self.log = logging.getLogger()
 
         limit  = (limit is not None) and limit or 1000 #False
         offset = (offset is not None) and offset or 0 #False
@@ -118,8 +126,11 @@ class Collection(db.Model):
             if len(key_sets) == 0:
                 keys = []
             else:
-                keys = [db.Key(x) for x in set.intersection(*key_sets)]
-            q.filter('__key__ IN', keys)
+                final_set = key_sets.pop()
+                for key_set in key_sets:
+                    final_set = final_set & key_set
+                keys = [db.Key(x) for x in final_set]
+            q.filter('__key__ IN', list(keys))
 
         # Determine which sort order to use.
         if 'oldest' == sort: order = 'modified'
@@ -130,21 +141,23 @@ class Collection(db.Model):
         # TODO: direct output!
 
         # Return IDs / full objects as appropriate for full option.
+        if wbo:
+            return (w for w in q.fetch(limit, offset))
         if not full:
             return ( w.wbo_id for w in q.fetch(limit, offset) )
         else:
             return ( w.to_dict() for w in q.fetch(limit, offset) )
 
     @classmethod
-    def build_key_name(cls, profile, name):
-        return 'collection:%s:%s' % (profile.key(), name)
+    def build_key_name(cls, name):
+        return name
 
     @classmethod
     def get_by_profile_and_name(cls, profile, name):
         """Get a collection by name and user"""
         return Collection.get_or_insert(
             parent=profile,
-            key_name=cls.build_key_name(profile, name),
+            key_name=cls.build_key_name(name),
             profile=profile,
             name=name
         )
@@ -196,7 +209,12 @@ class WBO(db.Model):
         return wbo_data
 
     @classmethod
-    def insert_or_update(cls, data_in):
+    def build_key_name(cls, wbo_data):
+        """Build a collection-unique key name for a WBO"""
+        return wbo_data['wbo_id']
+
+    @classmethod
+    def from_json(cls, data_in):
         wbo, errors = None, []
 
         if 'collection' not in data_in:
@@ -239,12 +257,8 @@ class WBO(db.Model):
         errors = cls.validate(wbo_data)
         if len(errors) > 0: return (None, errors)
 
-        wbo = WBO.get_by_collection_and_wbo_id(collection, wbo_id)
-        if not wbo:
-            wbo = WBO(**wbo_data)
-        else:
-            for k,v in wbo_data.items(): setattr(wbo, k, v)
-        wbo.put()
+        wbo_data['key_name'] = cls.build_key_name(wbo_data)
+        wbo = WBO(**wbo_data)
 
         return (wbo, errors)
 

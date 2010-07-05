@@ -109,12 +109,13 @@ class StorageItemHandler(SyncApiBaseRequestHandler):
             'collection_name': collection_name,
             'wbo_id': wbo_id
         })
-        (wbo, errors) = WBO.insert_or_update(self.request.body_json)
+        (wbo, errors) = WBO.from_json(self.request.body_json)
         if not wbo:
             self.response.set_status(400, message="Bad Request")
             self.response.out.write(WEAVE_ERROR_INVALID_WBO)
             return None
         else:
+            wbo.put()
             return wbo.modified
 
 class StorageCollectionHandler(SyncApiBaseRequestHandler):
@@ -126,26 +127,9 @@ class StorageCollectionHandler(SyncApiBaseRequestHandler):
             self.request.profile, collection_name
         )
 
-        params = dict((k,self.request.get(k, None)) for k in (
-            'id', 'ids', 'predecessorid', 'parentid', 
-            'older', 'newer',
-            'index_above', 'index_below', 
-            'full', 'limit', 'offset', 'sort'
-        ))
-
-        params['full'] = params['full'] is not None
-
-        if params['ids']: params['ids'] = params['ids'].split(',')
-
-        for n in ('index_above', 'index_below', 'limit', 'offset'):
-            if params[n]: params[n] = int(params[n])
-
-        for n in ('older', 'newer'):
-            if params[n]: params[n] = float(params[n])
-
         # TODO: Need a generator here? 
         # TODO: Find out how not to load everything into memory.
-
+        params = self.normalize_retrieval_parameters()
         out = collection.retrieve(**params)
 
         accept = ('Accept' not in self.request.headers 
@@ -186,18 +170,21 @@ class StorageCollectionHandler(SyncApiBaseRequestHandler):
             self.request.profile, collection_name
         )
 
-        self.log = logging.getLogger()
+        wbos = []
         for wbo_data in self.request.body_json:
             if 'id' not in wbo_data: continue
-            self.log.debug("WBO %s" % simplejson.dumps(wbo_data))
             wbo_data['collection'] = collection
             wbo_id = wbo_data['id']
-            (wbo, errors) = WBO.insert_or_update(wbo_data)
+            (wbo, errors) = WBO.from_json(wbo_data)
             if wbo:
                 out['modified'] = wbo.modified
                 out['success'].append(wbo_id)
+                wbos.append(wbo)
             else:
                 out['failed'][wbo_id] = errors
+
+        if (len(wbos) > 0):
+            db.put(wbos)
 
         return out
 
@@ -205,12 +192,36 @@ class StorageCollectionHandler(SyncApiBaseRequestHandler):
     @json_response
     def delete(self, user_name, collection_name):
         """Bulk deletion of WBOs from a collection"""
-        # TODO: Accept params for get() to selectively delete.
         collection = Collection.get_by_profile_and_name(
             self.request.profile, collection_name
         )
-        collection.delete()
+        params = self.normalize_retrieval_parameters()
+        params['wbo'] = True
+        out = collection.retrieve(**params)
+        db.delete(out)
         return WBO.get_time_now()
+
+    def normalize_retrieval_parameters(self):
+        """Massage incoming retrieval parameters into a form acceptable by
+        collection.retrieve"""
+        params = dict((k,self.request.get(k, None)) for k in (
+            'id', 'ids', 'predecessorid', 'parentid', 
+            'older', 'newer',
+            'index_above', 'index_below', 
+            'full', 'wbo', 'limit', 'offset', 'sort'
+        ))
+
+        params['full'] = params['full'] is not None
+
+        if params['ids']: params['ids'] = params['ids'].split(',')
+
+        for n in ('index_above', 'index_below', 'limit', 'offset'):
+            if params[n]: params[n] = int(params[n])
+
+        for n in ('older', 'newer'):
+            if params[n]: params[n] = float(params[n])
+
+        return params
 
 class StorageHandler(SyncApiBaseRequestHandler):
 
