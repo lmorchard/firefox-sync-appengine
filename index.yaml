@@ -36,4 +36,9 @@ indexes:
   properties:
   - name: sortindex
     direction: desc
+
+- kind: WBO
+  ancestor: yes
+  properties:
+  - name: sortindex
     
