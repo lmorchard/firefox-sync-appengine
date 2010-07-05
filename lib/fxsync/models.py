@@ -68,7 +68,7 @@ class Collection(db.Model):
         db.Model.delete(self)
 
     def retrieve(self, 
-            full=None, wbo=None, direct_output=None, 
+            full=None, wbo=None, count=None, direct_output=None, 
             id=None, ids=None, 
             parentid=None, predecessorid=None, 
             newer=None, older=None, 
@@ -158,6 +158,8 @@ class Collection(db.Model):
         final_query.order(order)
 
         # Return IDs / full objects as appropriate for full option.
+        if count:
+            return final_query.count()
         if wbo:
             return ( w for w in final_query.fetch(limit, offset) )
         if not full:

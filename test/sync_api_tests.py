@@ -382,6 +382,7 @@ class SyncApiTests(unittest.TestCase):
         wbo_ids.sort()
         result_data.sort()
         self.assertEqual(wbo_ids, result_data)
+        self.assertEqual(len(wbo_ids), int(resp.headers['X-Weave-Records']))
 
         url = '/sync/1.0/%s/storage/%s?ids=%s&full=1' % (
             p.user_name, c.name, ','.join(wbo_ids)
@@ -392,6 +393,7 @@ class SyncApiTests(unittest.TestCase):
         result_data.sort(lambda a,b: cmp(a['id'], b['id']))
         for idx in range(len(wbos)):
             self.assertEqual(wbos[idx].payload, result_data[idx]['payload'])
+        self.assertEqual(len(wbo_ids), int(resp.headers['X-Weave-Records']))
 
     def test_retrieval_by_index_above_and_below(self):
         """Exercise collection retrieval on sortindex range"""
@@ -710,9 +712,9 @@ class SyncApiTests(unittest.TestCase):
 
         self.assertEqual(0, WBO.all().count())
 
-    def test_header_x_weave_records(self):
-        """Ensure retrieved count appears in X-Weave-Records header"""
-        self.fail('TODO')
+    def test_header_if_unmodified_since(self):
+        """Ensure that X-If-Unmodified-Since header is honored in PUT / POST / DELETE"""
+        pass
 
     def build_wbo_parents_and_predecessors(self):
         (p, c, ah) = (self.profile, self.collection, self.auth_header)

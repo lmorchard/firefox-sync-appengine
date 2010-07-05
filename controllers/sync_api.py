@@ -1,5 +1,7 @@
 """
 Controller package for main Sync API
+
+TODO: Issue X-Weave-Backoff when GAE quotas are running out
 """
 import sys, os
 base_dir = os.path.dirname( os.path.dirname(__file__) )
@@ -48,6 +50,7 @@ class SyncApiBaseRequestHandler(webapp.RequestHandler):
     def initialize(self, req, resp):
         webapp.RequestHandler.initialize(self, req, resp)
         self.log = logging.getLogger()
+        self.response.headers['X-Weave-Timestamp'] = WBO.get_time_now()
 
 class CollectionsHandler(SyncApiBaseRequestHandler):
     """Handler for collection list"""
@@ -130,6 +133,9 @@ class StorageCollectionHandler(SyncApiBaseRequestHandler):
         # TODO: Need a generator here? 
         # TODO: Find out how not to load everything into memory.
         params = self.normalize_retrieval_parameters()
+        self.response.headers['X-Weave-Records'] = str(
+            collection.retrieve(count=True, **params)
+        )
         out = collection.retrieve(**params)
 
         accept = ('Accept' not in self.request.headers 
@@ -140,19 +146,13 @@ class StorageCollectionHandler(SyncApiBaseRequestHandler):
             for x in out:
                 self.response.out.write("%s\n" % simplejson.dumps(x))
 
-            #elif 'application/whoisi' == accept:
-            #    self.response.headers['Content-Type'] = 'application/whoisi'
-            #    for x in out:
-            #        if params['full']:
-            #            self.response.out.write('%s%s' % (
-            #                struct.pack('!I', x['id']), 
-            #                simplejson.dumps(x)
-            #            ))
-            #        else:
-            #            self.response.out.write('%s%s' % (
-            #                struct.pack('!I', x), 
-            #                simplejson.dumps(x)
-            #            ))
+        elif 'application/whoisi' == accept:
+            self.response.headers['Content-Type'] = 'application/whoisi'
+            for x in out:
+                rec = simplejson.dumps(x)
+                self.response.out.write('%s%s' % (
+                    struct.pack('!I', len(rec)), rec
+                ))
 
         else:
             self.response.headers['Content-Type'] = 'application/json'
