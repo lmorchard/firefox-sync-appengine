@@ -1,6 +1,6 @@
 {% extends "../base.html" %}
 
-{% block page_title %}Sync Start{% endblock %}
+{% block page_title %}Sync Profile{% endblock %}
 
 {% block content %}
 <h1>Sync Profile</h1>
@@ -10,7 +10,7 @@
 
 {% if not profile %}
 
-    <p>You don't have a sync profile here for this login, yet. 
+    <p>You don't have a sync profile for this login, yet.</p>
     <form action="" method="post">
         <input type="hidden" name="action" value="create_profile" />
         <input type="submit" value="Create a new sync profile, please." /></p>
@@ -18,7 +18,7 @@
     
 {% else %}
 
-    <p>Use these custom server details when setting up Firefox Sync:</p>
+    <p>Use these custom server details to set up Firefox Sync:</p>
     <table class="sync_details">
         <tr><th>Server URL</th><td>{{sync_url}}</td></tr>
         <tr><th>User Name</th><td>{{ profile.user_name }}</td></tr>
