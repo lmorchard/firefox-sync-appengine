@@ -14,8 +14,21 @@ from time import mktime
 
 WBO_PAGE_SIZE = 25
 
+def paginate(items, page_len):
+    """Paginage a list of items into a list of page lists"""
+    total_len = len(items)
+    num_pages = total_len / page_len
+    (d, m)    = divmod(total_len, page_len)
+    if m > 0: 
+        num_pages += 1
+    return (
+        items[ (i * page_len):(i * page_len + page_len) ] 
+        for i in xrange(num_pages)
+    )
+
 class Profile(db.Model):
     """Sync profile associated with logged in account"""
+    user        = db.UserProperty(auto_current_user_add=True)
     user_name   = db.StringProperty(required=True)
     user_id     = db.StringProperty(required=True)
     password    = db.StringProperty(required=True)
@@ -46,28 +59,18 @@ class Profile(db.Model):
         return ( profile and profile.password == password )
 
     def delete(self):
-        w_keys = []
         c_keys = []
         cs = Collection.all().ancestor(self)
         for c in cs:
             c_keys.append(c.key())
-            w_keys.extend(WBO.all(keys_only=True).ancestor(c))
-        db.delete(w_keys)
+            while True:
+                # HACK: This smells like trouble - switch to Task Queue?
+                w_keys = WBO.all(keys_only=True).ancestor(c).fetch(500)
+                if not w_keys: break
+                db.delete(w_keys)
         db.delete(c_keys)
         db.Model.delete(self)
     
-def paginate(items, page_len):
-    """Paginage a list of items into a list of page lists"""
-    total_len = len(items)
-    num_pages = total_len / page_len
-    (d, m)    = divmod(total_len, page_len)
-    if m > 0: 
-        num_pages += 1
-    return (
-        items[ (i * page_len):(i * page_len + page_len) ] 
-        for i in xrange(num_pages)
-    )
-
 class Collection(db.Model):
     profile = db.ReferenceProperty(Profile, required=True)
     name    = db.StringProperty(required=True)
@@ -78,7 +81,11 @@ class Collection(db.Model):
     )
 
     def delete(self):
-        db.delete(WBO.all(keys_only=True).ancestor(self))
+        while True:
+            # HACK: This smells like trouble - switch to Task Queue?
+            w_keys = WBO.all(keys_only=True).ancestor(self).fetch(500)
+            if not w_keys: break
+            db.delete(w_keys)
         db.Model.delete(self)
 
     def retrieve(self, 
@@ -155,6 +162,8 @@ class Collection(db.Model):
             
             keys = [db.Key(x) for x in key_set]
             key_pages = paginate(keys, WBO_PAGE_SIZE)
+
+            # Use the key pages for a combo result here.
 
             final_query = WBO.all().ancestor(self).filter('__key__ IN', keys)
 

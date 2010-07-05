@@ -3,9 +3,10 @@
 {% block page_title %}Sync Start{% endblock %}
 
 {% block content %}
-<h1>Sync Start</h1>
+<h1>Sync Profile</h1>
 
-<p>You are logged in as: <code>{{ user.nickname }}</code></p>
+<p>You are logged in as <code>{{ user.nickname }}</code> 
+    (<a href="{{ logout_url }}">logout</a>).</p>
 
 {% if not profile %}
 
@@ -16,27 +17,29 @@
     </form>
     
 {% else %}
-    
-    <p>A sync profile exists.</p>
 
-    <dl>
-        <dt>Server URL</dt><dd>{{sync_url}}</dd>
-        <dt>User Name</dt><dd>{{ profile.user_name }}</dd>
-        <dt>Password</dt>
-        <dd>
+    <p>Use these custom server details when setting up Firefox Sync:</p>
+    <table class="sync_details">
+        <tr><th>Server URL</th><td>{{sync_url}}</td></tr>
+        <tr><th>User Name</th><td>{{ profile.user_name }}</td></tr>
+        <tr><th>Password</th>
+        <td>
             <span>{{ profile.password }}</span>
             <form action="" method="post">
                 <input type="hidden" name="action" value="regenerate_password" />
                 <input type="submit" value="Re-generate password" /></p>
             </form>
-        </dd>
-    </dl>
+        </td></tr>
+    </table>
 
+    {% comment %}
+    <!-- TODO: Enable this in the future -->
     <p>Would you like to delete the sync profile for this login?
     <form action="" method="post">
         <input type="hidden" name="action" value="delete_profile" />
         <input type="submit" value="Yes, delete all my data, please." /></p>
     </form>
+    {% endcomment %}
 
 {% endif %}
 

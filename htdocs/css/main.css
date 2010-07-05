@@ -1,4 +1,8 @@
 /**
  * Main styles
  */
+.sync_details { }
+.sync_details tr { }
+.sync_details tr th { width: 15ex; vertical-align: top; text-align: right; padding: 0.5em 0.25em 0.5em 0.25em; }
+.sync_details tr td { padding: 0.5em 0.25em 0.5em 0.25em; }
 

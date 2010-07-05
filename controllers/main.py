@@ -5,7 +5,7 @@ import sys, os, os.path
 base_dir = os.path.dirname( os.path.dirname(__file__) )
 sys.path.extend([ os.path.join(base_dir, d) for d in ('lib', 'extlib') ])
 
-import random, string, logging
+import random, string, logging, hashlib
 from google.appengine.api import users
 from google.appengine.ext import webapp
 from google.appengine.ext.webapp import util, template
@@ -34,7 +34,8 @@ class StartHandler(webapp.RequestHandler):
         return self.render_template('main/start.html', {
             'user': user, 
             'profile': profile,
-            'sync_url': '%s/sync/' % self.request.application_url
+            'sync_url': '%s/sync/' % self.request.application_url,
+            'logout_url': users.create_logout_url(self.request.uri)
         })
 
     def post(self):
@@ -49,8 +50,9 @@ class StartHandler(webapp.RequestHandler):
             
             # Create a new profile, with auto-generated password
             new_profile = Profile(
+                user      = user,
                 user_id   = user.user_id(),
-                user_name = user.nickname(),
+                user_name = hashlib.md5(user.user_id()).hexdigest(),
                 password  = Profile.generate_password()
             )
             new_profile.put()

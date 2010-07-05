@@ -714,7 +714,7 @@ class SyncApiTests(unittest.TestCase):
 
     def test_header_if_unmodified_since(self):
         """Ensure that X-If-Unmodified-Since header is honored in PUT / POST / DELETE"""
-        pass
+        self.fail("TODO")
 
     def build_wbo_parents_and_predecessors(self):
         (p, c, ah) = (self.profile, self.collection, self.auth_header)
