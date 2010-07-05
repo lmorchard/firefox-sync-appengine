@@ -79,74 +79,91 @@ class Collection(db.Model):
         offset = (offset is not None) and offset or 0 #False
         sort   = (sort is not None) and sort or 'index'
 
-        filter_used = False
-        key_sets = []
+        final_query = None
 
         if id:
-            filter_used = True
-            q = WBO.all(keys_only=True).ancestor(self).filter('wbo_id =', id)
-            key_sets.append(set(str(x) for x in q.fetch(limit)))
+            final_query = WBO.all().ancestor(self).filter('wbo_id =', id)
 
-        if ids:
-            filter_used = True
+        elif ids:
             # TODO: No me gusta el full WBO turned to key here
-            q = WBO.all().ancestor(self).filter('wbo_id IN', ids)
-            key_sets.append(set('%s'%x.key() for x in q.fetch(limit)))
+            final_query = WBO.all().ancestor(self).filter('wbo_id IN', ids)
 
-        if index_above is not None or index_below is not None:
-            filter_used = True
-            q = WBO.all(keys_only=True).ancestor(self)
-            if index_above: q.filter('sortindex >', index_above)
-            if index_below: q.filter('sortindex <', index_below)
-            key_sets.append(set(str(x) for x in q.fetch(limit)))
+        else:
+            queries = []
 
-        if newer is not None or older is not None:
-            filter_used = True
-            q = WBO.all(keys_only=True).ancestor(self)
-            if newer: q.filter('modified >', newer)
-            if older: q.filter('modified <', older)
-            key_sets.append(set(str(x) for x in q.fetch(limit)))
+            # TODO: Work out how to use keys_only=True here again.
 
-        if parentid is not None:
-            filter_used = True
-            q = (WBO.all(keys_only=True).ancestor(self)
-                .filter('parentid =', parentid))
-            key_sets.append(set(str(x) for x in q.fetch(limit)))
-            
-        if predecessorid is not None:
-            filter_used = True
-            q = (WBO.all(keys_only=True).ancestor(self)
-                .filter('predecessorid =', predecessorid))
-            key_sets.append(set(str(x) for x in q.fetch(limit)))
+            if parentid is not None:
+                queries.append(WBO.all().ancestor(self)
+                    .filter('parentid =', parentid))
+                
+            if predecessorid is not None:
+                queries.append(WBO.all().ancestor(self)
+                    .filter('predecessorid =', predecessorid))
 
-        # Start looking for the WBOs using collected key sets - or query
-        # without filter if none used.
-        q = WBO.all().ancestor(self)
-        if filter_used:
-            if len(key_sets) == 0:
-                keys = []
+            if index_above is not None or index_below is not None:
+                q = WBO.all().ancestor(self)
+                if index_above: q.filter('sortindex >', index_above)
+                if index_below: q.filter('sortindex <', index_below)
+                q.order('sortindex')
+                queries.append(q)
+
+            if newer is not None or older is not None:
+                q = WBO.all().ancestor(self)
+                if newer: q.filter('modified >', newer)
+                if older: q.filter('modified <', older)
+                q.order('modified')
+                queries.append(q)
+
+            if len(queries) == 0:
+                final_query = WBO.all().ancestor(self)
+            elif len(queries) == 1:
+                final_query = queries[0]
             else:
-                final_set = key_sets.pop()
-                for key_set in key_sets:
-                    final_set = final_set & key_set
-                keys = [db.Key(x) for x in final_set]
-            q.filter('__key__ IN', list(keys))
+                key_set = None
+                for q in queries:
+                    # HACK: I don't think setting _keys_only is kosher
+                    q._keys_only = True
+                    keys = set(str(x) for x in q.fetch(limit, offset))
+                    if key_set is None:
+                        key_set = keys
+                    else:
+                        key_set = key_set & keys
+                
+                keys = [db.Key(x) for x in key_set]
+
+                """
+                # TODO: Paginate the keys, because 30 is max.
+                page_len  = 25
+                total_len = len(keys)
+                num_pages = total_len / page_len
+                (d, m)    = divmod(total_len, page_len)
+                if m > 0: 
+                    num_pages += 1
+                pages = (
+                    keys[ (i * page_len):(i * page_len + page_len) ] 
+                    for i in xrange(num_pages)
+                )
+                """
+
+                final_query = WBO.all().ancestor(self).filter('__key__ IN', keys)
 
         # Determine which sort order to use.
-        if 'oldest' == sort: order = 'modified'
-        elif 'newest' == sort: order = '-modified'
-        else: order = 'sortindex'
-        q.order(order)
-
-        # TODO: direct output!
+        if 'oldest' == sort: 
+            order = 'modified'
+        elif 'newest' == sort: 
+            order = '-modified'
+        else: 
+            order = 'sortindex'
+        final_query.order(order)
 
         # Return IDs / full objects as appropriate for full option.
         if wbo:
-            return (w for w in q.fetch(limit, offset))
+            return ( w for w in final_query.fetch(limit, offset) )
         if not full:
-            return ( w.wbo_id for w in q.fetch(limit, offset) )
+            return ( w.wbo_id for w in final_query.fetch(limit, offset) )
         else:
-            return ( w.to_dict() for w in q.fetch(limit, offset) )
+            return ( w.to_dict() for w in final_query.fetch(limit, offset) )
 
     @classmethod
     def build_key_name(cls, name):

@@ -443,6 +443,25 @@ class SyncApiTests(unittest.TestCase):
 
         expected_ids = [
             w.wbo_id for w in wbos
+            if newer < w.modified
+        ]
+
+        url = '/sync/1.0/%s/storage/%s?newer=%s' % (
+            p.user_name, c.name, newer
+        )
+        resp = self.app.get(url, headers=ah)
+        result_data = simplejson.loads(resp.body)
+
+        expected_ids.sort()
+        result_data.sort()
+
+        self.log.debug("URL      %s" % url)
+        self.log.debug("EXPECTED %s" % simplejson.dumps(expected_ids))
+        self.log.debug("RESULT   %s" % resp.body)
+        self.assertEqual(expected_ids, result_data)
+
+        expected_ids = [
+            w.wbo_id for w in wbos
             if newer < w.modified and w.modified < older
         ]
 
@@ -553,10 +572,6 @@ class SyncApiTests(unittest.TestCase):
         wbos = self.build_wbo_set()
 
         # Criteria set for testing.
-        ids = [ 
-            '1', '2', '3', '4', '5', '6', 
-            '9', '10', '11', '15', '16' 
-        ]
         index_above   = 2
         index_below   = 13
         parentid      = 'a2'
@@ -565,13 +580,12 @@ class SyncApiTests(unittest.TestCase):
         expected_ids = []
         for w in wbos:
             if (index_above < w.sortindex and index_below > w.sortindex and
-                    parentid == w.parentid and predecessorid == w.predecessorid and 
-                    w.wbo_id in ids):
+                    parentid == w.parentid and predecessorid == w.predecessorid):
                 expected_ids.append(w.wbo_id)
         
         # Build and run a retrieval query using all of the criteria.
-        params = 'index_above=%s&index_below=%s&parentid=%s&predecessorid=%s&ids=%s' % (
-            index_above, index_below, parentid, predecessorid, ','.join(ids)
+        params = 'index_above=%s&index_below=%s&parentid=%s&predecessorid=%s' % (
+            index_above, index_below, parentid, predecessorid
         )
         url = '/sync/1.0/%s/storage/%s?%s' % (p.user_name, c.name, params)
         resp = self.app.get(url, headers=ah)

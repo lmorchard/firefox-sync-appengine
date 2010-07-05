@@ -29,6 +29,12 @@ indexes:
   ancestor: yes
   properties:
   - name: modified
+  - name: sortindex
+  
+- kind: WBO
+  ancestor: yes
+  properties:
+  - name: modified
     direction: desc
 
 - kind: WBO
@@ -41,4 +47,4 @@ indexes:
   ancestor: yes
   properties:
   - name: sortindex
-    
+
