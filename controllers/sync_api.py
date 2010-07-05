@@ -50,7 +50,7 @@ class SyncApiBaseRequestHandler(webapp.RequestHandler):
     def initialize(self, req, resp):
         webapp.RequestHandler.initialize(self, req, resp)
         self.log = logging.getLogger()
-        self.response.headers['X-Weave-Timestamp'] = WBO.get_time_now()
+        self.response.headers['X-Weave-Timestamp'] = str(WBO.get_time_now())
 
 class CollectionsHandler(SyncApiBaseRequestHandler):
     """Handler for collection list"""
@@ -133,9 +133,8 @@ class StorageCollectionHandler(SyncApiBaseRequestHandler):
         # TODO: Need a generator here? 
         # TODO: Find out how not to load everything into memory.
         params = self.normalize_retrieval_parameters()
-        self.response.headers['X-Weave-Records'] = str(
-            collection.retrieve(count=True, **params)
-        )
+        self.response.headers['X-Weave-Records'] = \
+            str(collection.retrieve(count=True, **params))
         out = collection.retrieve(**params)
 
         accept = ('Accept' not in self.request.headers 

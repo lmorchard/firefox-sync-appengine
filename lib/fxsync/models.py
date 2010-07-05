@@ -12,6 +12,8 @@ from google.appengine.api import users
 from datetime import datetime
 from time import mktime
 
+WBO_PAGE_SIZE = 25
+
 class Profile(db.Model):
     """Sync profile associated with logged in account"""
     user_name   = db.StringProperty(required=True)
@@ -54,6 +56,18 @@ class Profile(db.Model):
         db.delete(c_keys)
         db.Model.delete(self)
     
+def paginate(items, page_len):
+    """Paginage a list of items into a list of page lists"""
+    total_len = len(items)
+    num_pages = total_len / page_len
+    (d, m)    = divmod(total_len, page_len)
+    if m > 0: 
+        num_pages += 1
+    return (
+        items[ (i * page_len):(i * page_len + page_len) ] 
+        for i in xrange(num_pages)
+    )
+
 class Collection(db.Model):
     profile = db.ReferenceProperty(Profile, required=True)
     name    = db.StringProperty(required=True)
@@ -79,82 +93,75 @@ class Collection(db.Model):
         offset = (offset is not None) and offset or 0 #False
         sort   = (sort is not None) and sort or 'index'
 
-        final_query = None
-
         if id:
-            final_query = WBO.all().ancestor(self).filter('wbo_id =', id)
+            w = WBO.all().ancestor(self).filter('wbo_id =', id).get()
+            if count: return 1
+            if wbo: return [ w ]
+            if full: return [ w.to_dict() ]
+            return [ w.wbo_id ]
 
         elif ids:
-            # TODO: No me gusta el full WBO turned to key here
-            final_query = WBO.all().ancestor(self).filter('wbo_id IN', ids)
+            if count: return len(ids)
+            wbos = []
+            id_pages = paginate(ids, WBO_PAGE_SIZE)
+            for id_page in id_pages:
+                q = WBO.all().ancestor(self).filter('wbo_id IN', id_page)
+                wbos.extend(q.fetch(WBO_PAGE_SIZE))
+            if wbo: return wbos
+            if full: return ( w.to_dict() for w in wbos )
+            return ( w.wbo_id for w in wbos )
 
+        final_query = None
+        queries = []
+
+        # TODO: Work out how to use keys_only=True here again.
+
+        if parentid is not None:
+            queries.append(WBO.all().ancestor(self)
+                .filter('parentid =', parentid))
+            
+        if predecessorid is not None:
+            queries.append(WBO.all().ancestor(self)
+                .filter('predecessorid =', predecessorid))
+
+        if index_above is not None or index_below is not None:
+            q = WBO.all().ancestor(self)
+            if index_above: q.filter('sortindex >', index_above)
+            if index_below: q.filter('sortindex <', index_below)
+            q.order('sortindex')
+            queries.append(q)
+
+        if newer is not None or older is not None:
+            q = WBO.all().ancestor(self)
+            if newer: q.filter('modified >', newer)
+            if older: q.filter('modified <', older)
+            q.order('modified')
+            queries.append(q)
+
+        if len(queries) == 0:
+            final_query = WBO.all().ancestor(self)
+        elif len(queries) == 1:
+            final_query = queries[0]
         else:
-            queries = []
+            key_set = None
+            for q in queries:
+                # HACK: I don't think setting _keys_only is kosher
+                q._keys_only = True
+                keys = set(str(x) for x in q.fetch(limit, offset))
+                if key_set is None:
+                    key_set = keys
+                else:
+                    key_set = key_set & keys
+            
+            keys = [db.Key(x) for x in key_set]
+            key_pages = paginate(keys, WBO_PAGE_SIZE)
 
-            # TODO: Work out how to use keys_only=True here again.
-
-            if parentid is not None:
-                queries.append(WBO.all().ancestor(self)
-                    .filter('parentid =', parentid))
-                
-            if predecessorid is not None:
-                queries.append(WBO.all().ancestor(self)
-                    .filter('predecessorid =', predecessorid))
-
-            if index_above is not None or index_below is not None:
-                q = WBO.all().ancestor(self)
-                if index_above: q.filter('sortindex >', index_above)
-                if index_below: q.filter('sortindex <', index_below)
-                q.order('sortindex')
-                queries.append(q)
-
-            if newer is not None or older is not None:
-                q = WBO.all().ancestor(self)
-                if newer: q.filter('modified >', newer)
-                if older: q.filter('modified <', older)
-                q.order('modified')
-                queries.append(q)
-
-            if len(queries) == 0:
-                final_query = WBO.all().ancestor(self)
-            elif len(queries) == 1:
-                final_query = queries[0]
-            else:
-                key_set = None
-                for q in queries:
-                    # HACK: I don't think setting _keys_only is kosher
-                    q._keys_only = True
-                    keys = set(str(x) for x in q.fetch(limit, offset))
-                    if key_set is None:
-                        key_set = keys
-                    else:
-                        key_set = key_set & keys
-                
-                keys = [db.Key(x) for x in key_set]
-
-                """
-                # TODO: Paginate the keys, because 30 is max.
-                page_len  = 25
-                total_len = len(keys)
-                num_pages = total_len / page_len
-                (d, m)    = divmod(total_len, page_len)
-                if m > 0: 
-                    num_pages += 1
-                pages = (
-                    keys[ (i * page_len):(i * page_len + page_len) ] 
-                    for i in xrange(num_pages)
-                )
-                """
-
-                final_query = WBO.all().ancestor(self).filter('__key__ IN', keys)
+            final_query = WBO.all().ancestor(self).filter('__key__ IN', keys)
 
         # Determine which sort order to use.
-        if 'oldest' == sort: 
-            order = 'modified'
-        elif 'newest' == sort: 
-            order = '-modified'
-        else: 
-            order = 'sortindex'
+        if 'oldest' == sort: order = 'modified'
+        elif 'newest' == sort: order = '-modified'
+        else: order = 'sortindex'
         final_query.order(order)
 
         # Return IDs / full objects as appropriate for full option.
