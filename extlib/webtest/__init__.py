@@ -908,7 +908,7 @@ class TestResponse(Response):
                 "Not a JSON response body (content-type: %s)"
                 % self.content_type)
         try:
-            from simplejson import loads
+            from django.utils.simplejson import loads
         except ImportError:
             raise ImportError(
                 "You must have simplejson installed to use response.json")

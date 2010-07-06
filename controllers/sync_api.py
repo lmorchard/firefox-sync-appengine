@@ -7,12 +7,13 @@ import sys, os
 base_dir = os.path.dirname( os.path.dirname(__file__) )
 sys.path.extend([ os.path.join(base_dir, d) for d in ( 'lib', 'extlib' ) ])
 
-import logging, simplejson, struct
+import logging, struct
 from datetime import datetime
 from time import mktime
 from google.appengine.api import users
 from google.appengine.ext import webapp, db
 from google.appengine.ext.webapp import util, template
+from django.utils import simplejson 
 from fxsync.utils import profile_auth, json_request, json_response
 from fxsync.models import Profile, Collection, WBO
 

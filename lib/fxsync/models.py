@@ -5,9 +5,10 @@ import sys, os
 base_dir = os.path.dirname( os.path.dirname(__file__) )
 sys.path.extend([ os.path.join(base_dir, d) for d in ( 'lib', 'extlib' ) ])
 
-import datetime, random, string, hashlib, logging, simplejson
+import datetime, random, string, hashlib, logging
 from google.appengine.ext import db
 from google.appengine.api import users
+from django.utils import simplejson
 
 from datetime import datetime
 from time import mktime

@@ -7,7 +7,8 @@ import sys, os, os.path
 base_dir = os.path.dirname( os.path.dirname(__file__) )
 sys.path.extend([ os.path.join(base_dir, d) for d in ('lib', 'extlib')])
 
-import urllib, base64, simplejson
+import urllib, base64
+from django.utils import simplejson
 from fxsync.models import Profile
 
 def json_request(func):

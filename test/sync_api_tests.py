@@ -5,8 +5,9 @@ sys.path.extend([ os.path.join(base_dir, d) for d in (
 )])
 
 import unittest, logging, datetime, time, base64
-import webtest, simplejson, random, string
+import webtest, random, string
 from google.appengine.ext import webapp, db
+from django.utils import simplejson
 
 from fxsync.models import Profile, Collection, WBO
 import sync_api
