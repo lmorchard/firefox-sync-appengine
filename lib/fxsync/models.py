@@ -171,7 +171,7 @@ class Collection(db.Model):
         # Determine which sort order to use.
         if 'oldest' == sort: order = 'modified'
         elif 'newest' == sort: order = '-modified'
-        else: order = 'sortindex'
+        else: order = '-sortindex'
         final_query.order(order)
 
         # Return IDs / full objects as appropriate for full option.

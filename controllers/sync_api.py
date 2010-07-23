@@ -41,8 +41,8 @@ def application():
         (r'/sync/1.0/(.*)/info/collections', CollectionsHandler),
         (r'/sync/1.0/(.*)/info/collection_counts', CollectionCountsHandler),
         (r'/sync/1.0/(.*)/info/quota', QuotaHandler),
+        (r'/sync/1.0/(.*)/storage/([^\/]*)/?$', StorageCollectionHandler),
         (r'/sync/1.0/(.*)/storage/(.*)/(.*)', StorageItemHandler),
-        (r'/sync/1.0/(.*)/storage/(.*)', StorageCollectionHandler),
         (r'/sync/1.0/(.*)/storage/', StorageHandler),
     ], debug=True)
 
