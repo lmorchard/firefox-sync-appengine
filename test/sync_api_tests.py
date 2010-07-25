@@ -523,7 +523,7 @@ class SyncApiTests(unittest.TestCase):
         sorts = {
             'oldest': lambda a,b: cmp(a.modified,  b.modified),
             'newest': lambda a,b: cmp(b.modified,  a.modified),
-            'index':  lambda a,b: cmp(a.sortindex, b.sortindex),
+            'index':  lambda a,b: cmp(b.sortindex, a.sortindex),
         }
 
         for sort_option, sort_fn in sorts.items():
@@ -581,11 +581,12 @@ class SyncApiTests(unittest.TestCase):
         predecessorid = 'b3'
 
         expected_ids = []
+        wbos.sort(lambda b,a: cmp(a.sortindex, b.sortindex))
         for w in wbos:
             if (index_above < w.sortindex and index_below > w.sortindex and
                     parentid == w.parentid and predecessorid == w.predecessorid):
                 expected_ids.append(w.wbo_id)
-        
+         
         # Build and run a retrieval query using all of the criteria.
         params = 'index_above=%s&index_below=%s&parentid=%s&predecessorid=%s' % (
             index_above, index_below, parentid, predecessorid
@@ -654,6 +655,7 @@ class SyncApiTests(unittest.TestCase):
         (p, c, ah) = (self.profile, self.collection, self.auth_header)
         self.build_wbo_set()
         wbos = [ w for w in WBO.all() ]
+        wbos.sort(lambda b,a: cmp(a.sortindex, b.sortindex))
         expected_ids = [ w.wbo_id for w in wbos ]
 
         url = '/sync/1.0/%s/storage/%s?full=1' % (p.user_name, c.name)
